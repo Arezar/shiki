@@ -12,6 +12,9 @@
 (function () {
     'use strict'
 
+    if (typeof window === 'undefined' || window.shikimori_plugin_ready) return
+    window.shikimori_plugin_ready = true
+
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
     var UA = 'LampaShikimoriPlugin/1.1'
     var PAGE = 20
@@ -61,11 +64,6 @@
             cacheKeys.push(key)
         }
         cacheStore[key] = { val: val, ts: Date.now() }
-    }
-
-    function cacheClear() {
-        cacheStore = {}
-        cacheKeys = []
     }
 
     // ---------- localization ----------
@@ -1575,45 +1573,6 @@
         })
     }
 
-    // Export internal API for automated testing
-    var exportedApi = {
-        HOSTS: HOSTS,
-        PLACEHOLDER: PLACEHOLDER,
-        esc: esc,
-        cleanDescription: cleanDescription,
-        kindTitle: kindTitle,
-        statusTitle: statusTitle,
-        formatScore: formatScore,
-        formatRating: formatRating,
-        formatEpisodes: formatEpisodes,
-        posterOf: posterOf,
-        normalize: normalize,
-        stripSeasonSuffix: stripSeasonSuffix,
-        dedupeQueries: dedupeQueries,
-        extractYoutubeId: extractYoutubeId,
-        extractTrailers: extractTrailers,
-        isCardLikelyAnime: isCardLikelyAnime,
-        scoreTmdbCandidate: scoreTmdbCandidate,
-        getHostCandidates: getHostCandidates,
-        shikiRequest: shikiRequest,
-        tmdbForAnime: tmdbForAnime,
-        openShikimoriForCard: openShikimoriForCard,
-        cacheClear: cacheClear,
-        init: init
-    }
-
-    if (typeof window !== 'undefined') {
-        window.ShikimoriPlugin = exportedApi
-        if (!window.shikimori_plugin_ready) {
-            window.shikimori_plugin_ready = true
-            if (typeof Lampa !== 'undefined') {
-                if (window.appready) init()
-                else Lampa.Listener.follow('app', function (e) { if (e && e.type === 'ready') init() })
-            }
-        }
-    }
-
-    if (typeof module !== 'undefined' && module.exports) {
-        module.exports = exportedApi
-    }
+    if (window.appready) init()
+    else Lampa.Listener.follow('app', function (e) { if (e && e.type === 'ready') init() })
 })()
