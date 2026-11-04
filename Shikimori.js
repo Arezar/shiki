@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.3.0'
+    var VERSION = '1.4.0'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -79,7 +79,7 @@
         shikimori_tab_popular:{ ru: 'Популярное', en: 'Popular', uk: 'Популярне' },
         shikimori_tab_top:    { ru: 'Топ рейтинга', en: 'Top rated', uk: 'Топ рейтингу' },
         shikimori_tab_anons:  { ru: 'Анонсы', en: 'Upcoming', uk: 'Анонси' },
-        shikimori_tmdb:       { ru: 'Найти на TMDB', en: 'Find on TMDB', uk: 'Знайти на TMDB' },
+        shikimori_tmdb:       { ru: 'Открыть в Lampa', en: 'Open in Lampa', uk: 'Відкрити в Lampa' },
         shikimori_trailer:    { ru: 'Трейлер', en: 'Trailer', uk: 'Трейлер' },
         shikimori_no_tmdb:    { ru: 'На TMDB ничего не найдено', en: 'Nothing found on TMDB', uk: 'На TMDB нічого не знайдено' },
         shikimori_empty:      { ru: 'Ничего не найдено', en: 'Nothing found', uk: 'Нічого не знайдено' },
@@ -378,57 +378,7 @@
     function injectCss() {
         if (cssInjected) return
         cssInjected = true
-        $('head').append('<style id="shikimori-plugin-styles">' +
-            '.shiki-toolbar{display:flex;flex-wrap:wrap;padding:0.5em 0 1em;align-items:center}' +
-            '.shiki-toolbar > *{margin:0 0.5em 0.5em 0}' +
-            '.shiki-tab{display:inline-flex;align-items:center;background:#1b1e27;color:#ddd;border-radius:6px;padding:0.45em 0.9em;font-size:1em;cursor:pointer;transition:background .15s}' +
-            '.shiki-tab > svg{margin-right:0.4em;flex-shrink:0}' +
-            '.shiki-tab--active{background:#2d3a52;color:#fff;border:1px solid #4ea7ff}' +
-            '.shiki-tab.selector--focus,.shiki-tab.focus{background:#4ea7ff;color:#fff;outline:none}' +
-            '.shiki-card{display:flex;background:#1b1e27;border-radius:8px;margin-bottom:0.6em;padding:0.6em;cursor:pointer}' +
-            '.shiki-card.selector--focus,.shiki-card.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
-            '.shiki-card__poster{flex-shrink:0}' +
-            '.shiki-card__poster img{width:6em;height:8.8em;object-fit:cover;border-radius:5px;display:block;background:#24262f}' +
-            '.shiki-card__body{padding:0.3em 1em;flex:1;min-width:0}' +
-            '.shiki-card__name{font-size:1.25em;font-weight:bold;line-height:1.3}' +
-            '.shiki-card__orig{color:#8c93a4;margin:0.2em 0;font-size:0.95em}' +
-            '.shiki-card__meta{color:#aeb4c4;font-size:0.92em;margin-top:0.35em}' +
-            '.shiki-card__score{color:#ffa100;font-weight:bold}' +
-            '.shiki-empty{padding:2.5em 1em;text-align:center;color:#9aa0b0;font-size:1.1em}' +
-            '.shiki-more,.shiki-retry{background:#1b1e27;color:#4ea7ff;padding:0.85em 1.2em;text-align:center;border-radius:8px;margin:0.6em 0 1.2em;cursor:pointer;font-weight:bold}' +
-            '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#4ea7ff;color:#fff}' +
-            '.shiki-full{display:flex;padding:1em 0.5em 2em;align-items:flex-start}' +
-            '.shiki-full__poster{flex-shrink:0;margin-right:1.5em}' +
-            '.shiki-full__img{width:14em;height:20em;object-fit:cover;border-radius:8px;display:block;background:#24262f;box-shadow:0 6px 20px rgba(0,0,0,.35)}' +
-            '.shiki-full__info{flex:1;min-width:0;max-width:62em}' +
-            '.shiki-full__title{font-size:1.85em;margin:0 0 0.15em;line-height:1.2}' +
-            '.shiki-full__orig{font-size:1.1em;color:#8c93a4;margin:0 0 0.7em;font-weight:normal}' +
-            '.shiki-full__facts{margin-bottom:0.6em}' +
-            '.shiki-full__facts span{display:inline-block;background:#2a2f3d;border-radius:5px;padding:0.2em 0.6em;margin:0.15em 0.35em 0.15em 0;font-size:0.92em}' +
-            '.shiki-full__genres{margin-bottom:0.8em}' +
-            '.shiki-full__genres span{display:inline-block;color:#4ea7ff;margin-right:0.65em;font-size:0.95em}' +
-            '.shiki-full__actions{display:flex;flex-wrap:wrap;margin:0.9em 0 1.1em}' +
-            '.shiki-full__actions > *{margin:0 0.7em 0.7em 0}' +
-            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}' +
-            '.shiki-full__actions .full-start__button > svg{margin-right:0.5em;flex-shrink:0}' +
-            '.shiki-full__descr{margin:0.9em 0;line-height:1.55;white-space:pre-line;color:#e6e8ee}' +
-            '.shiki-full__alt{color:#8c93a4;font-size:0.9em;margin-bottom:1.1em;line-height:1.4}' +
-            '.shiki-section{margin-top:1.4em}' +
-            '.shiki-section__title{font-size:1.2em;font-weight:bold;margin-bottom:0.6em;color:#fff}' +
-            '.shiki-shots{display:flex;flex-wrap:wrap}' +
-            '.shiki-shots img{width:11em;height:6.2em;object-fit:cover;border-radius:6px;background:#24262f;margin:0 0.6em 0.6em 0}' +
-            '.shiki-sublist{display:flex;flex-wrap:wrap}' +
-            '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
-            '.shiki-subcard > img{margin-right:0.65em;flex-shrink:0}' +
-            '.shiki-subcard--more{cursor:pointer;background:#1b1e27 !important;opacity:0.9}' +
-            '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
-            '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:4px;flex-shrink:0;background:#24262f}' +
-            '.shiki-subcard__body{min-width:0;flex:1}' +
-            '.shiki-subcard__title{font-size:0.95em;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-            '.shiki-subcard__sub{font-size:0.82em;color:#9aa0b0;margin-top:0.15em}' +
-            '@media (max-width:768px){.shiki-full{flex-direction:column;align-items:center}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}}' +
-            '.shiki-local-loading{opacity:0.6;pointer-events:none}' +
-            '</style>')
+        $('head').append('<style id="shikimori-plugin-styles">' + ".shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:1.1em;padding-right:1.1em}.shiki-toolbar{display:flex;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box;padding:.5em 0 1.15em}.shiki-toolbar>*{margin:0 .55em .55em 0;max-width:100%;box-sizing:border-box}.shiki-tab{display:inline-flex;align-items:center;justify-content:center;min-height:2.7em;max-width:100%;box-sizing:border-box;padding:.55em 1em;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.08);border-radius:.35em;font-size:1em;cursor:pointer}.shiki-tab>svg{margin-right:.45em;flex-shrink:0}.shiki-tab--active{background:rgba(255,255,255,.13);color:#fff;border-color:rgba(255,255,255,.32)}.shiki-tab.selector--focus,.shiki-tab.focus{background:rgba(255,255,255,.2);border-color:#fff;color:#fff;outline:2px solid rgba(255,255,255,.65)}.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}.shiki-card{display:flex;align-items:center;width:100%;min-height:9em;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.45em;margin:0 0 .65em;padding:.65em;cursor:pointer}.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}.shiki-card__poster{flex:0 0 auto}.shiki-card__poster img{width:7em;height:10.2em;max-width:22vw;object-fit:cover;border-radius:.25em;display:block;background:rgba(255,255,255,.08)}.shiki-card__body{padding:.35em 1em;flex:1;min-width:0;overflow:hidden}.shiki-card__name{font-size:1.22em;font-weight:600;line-height:1.3;white-space:normal;overflow-wrap:break-word}.shiki-card__orig{color:rgba(255,255,255,.58);margin:.25em 0;font-size:.92em;white-space:normal}.shiki-card__meta{color:rgba(255,255,255,.7);font-size:.9em;margin-top:.45em;line-height:1.45}.shiki-card__score{color:#ffc36a;font-weight:bold;white-space:nowrap}.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.68);font-size:1.05em}.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.06);color:rgba(255,255,255,.9);padding:.9em 1.2em;text-align:center;border:1px solid rgba(255,255,255,.1);border-radius:.4em;margin:.65em 0 1.2em;cursor:pointer;font-weight:600}.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:rgba(255,255,255,.18);border-color:#fff;color:#fff}.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}.shiki-full__img{width:14em;height:20em;max-width:30vw;object-fit:cover;border-radius:.4em;display:block;background:rgba(255,255,255,.08)}.shiki-full__info{flex:1;min-width:0;max-width:none}.shiki-full__title{font-size:1.8em;margin:0 0 .15em;line-height:1.2;overflow-wrap:break-word}.shiki-full__orig{font-size:1.05em;color:rgba(255,255,255,.58);margin:0 0 .7em;font-weight:normal}.shiki-full__facts{margin-bottom:.6em;line-height:1.7}.shiki-full__facts span{display:inline-block;background:rgba(255,255,255,.08);border-radius:.25em;padding:.2em .55em;margin:.15em .35em .15em 0;font-size:.9em}.shiki-full__genres{margin-bottom:.8em}.shiki-full__genres span{display:inline-block;color:rgba(255,255,255,.7);margin-right:.65em;font-size:.92em}.shiki-full__actions{display:flex;flex-wrap:wrap;align-items:center;margin:.9em 0 1.1em}.shiki-full__actions>*{margin:0 .7em .7em 0}.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}.shiki-full__actions .full-start__button>svg{margin-right:.5em;flex-shrink:0}.shiki-full__descr{margin:.9em 0;line-height:1.55;white-space:pre-line;color:rgba(255,255,255,.88)}.shiki-full__alt{color:rgba(255,255,255,.55);font-size:.88em;margin-bottom:1.1em;line-height:1.4;overflow-wrap:break-word}.shiki-section{margin-top:1.4em;width:100%;box-sizing:border-box}.shiki-section__title{font-size:1.15em;font-weight:600;margin-bottom:.6em;color:#fff}.shiki-shots{display:flex;flex-wrap:wrap}.shiki-shots img{width:11em;height:6.2em;max-width:42vw;object-fit:cover;border-radius:.3em;background:rgba(255,255,255,.08);margin:0 .6em .6em 0}.shiki-sublist{display:flex;flex-wrap:wrap;width:100%;box-sizing:border-box}.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.35em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.07)!important;opacity:1}.shiki-subcard.selector--focus,.shiki-subcard.focus{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.45);outline-offset:-2px}.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.25em;flex-shrink:0;background:rgba(255,255,255,.08)}.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.58);margin-top:.15em;white-space:normal}.shiki-local-loading{opacity:.6;pointer-events:none}@media (max-width:900px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.5em;padding-right:.5em}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}" + '</style>')
     }
 
     // ---------- Shikimori API (modular multi-host fallback + TTL cache) ----------
@@ -900,7 +850,7 @@
         var self = this
         var html = $('<div class="shiki-search-wrap"></div>')
         var net = createNetwork(12000)
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, end_ratio: 2 })
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, end_ratio: 1 })
         var page = 1
         var hasMore = false
         var loadingMore = false
@@ -1129,9 +1079,6 @@
 
         this.create = function () {
             scroll.minus()
-            scroll.onWheel = function (step) {
-                if (typeof Navigator !== 'undefined') Navigator.move(step > 0 ? 'down' : 'up')
-            }
             scroll.onEnd = function () {
                 loadMore(false)
             }
@@ -1249,10 +1196,6 @@
             }
 
             slot.empty().append(sec)
-            if (scroll && typeof scroll.update === 'function') {
-                try { scroll.update(scroll.render(true), false) } catch (e) {}
-            }
-
             var shikiCanAppend = false
             try {
                 if (Lampa.Controller && Lampa.Controller.enabled) {
@@ -1481,9 +1424,6 @@
 
         this.create = function () {
             scroll.minus()
-            scroll.onWheel = function (step) {
-                if (typeof Navigator !== 'undefined') Navigator.move(step > 0 ? 'down' : 'up')
-            }
             html.append(scroll.render())
             return html
         }
