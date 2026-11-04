@@ -110,6 +110,7 @@
         shikimori_anime_only:   { ru: 'Кнопка только для аниме и мультфильмов', en: 'Button only for anime & animation', uk: 'Кнопка лише для аніме та мультфільмів' },
         shikimori_host_label:   { ru: 'Зеркало Shikimori', en: 'Shikimori mirror', uk: 'Дзеркало Shikimori' },
         shikimori_host_auto:    { ru: 'Автоматически', en: 'Automatic', uk: 'Автоматично' },
+        shikimori_adult:         { ru: 'Показывать аниме 18+', en: 'Include adult anime (18+)', uk: 'Показувати аніме 18+' },
         shikimori_more:         { ru: 'ещё', en: 'more', uk: 'ще' }
     }
 
@@ -538,7 +539,11 @@
 
     function shikiCatalog(net, mode, keyword, page, success, failure) {
         var p = page || 1
-        var base = '?limit=' + PAGE + '&page=' + p + '&censored=true'
+        var allowAdult = false
+        try {
+            allowAdult = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult'))
+        } catch (e) {}
+        var base = '?limit=' + PAGE + '&page=' + p + '&censored=' + (allowAdult ? 'false' : 'true')
         var query
         if (mode === 'search' && keyword) {
             query = base + '&search=' + encodeURIComponent(keyword)
@@ -1754,6 +1759,11 @@
             component: 'shikimori',
             param: { name: 'shikimori_anime_only', type: 'trigger', default: true },
             field: { name: tr('shikimori_anime_only') }
+        })
+        Lampa.SettingsApi.addParam({
+            component: 'shikimori',
+            param: { name: 'shikimori_adult', type: 'trigger', default: false },
+            field: { name: tr('shikimori_adult') }
         })
         Lampa.SettingsApi.addParam({
             component: 'shikimori',
