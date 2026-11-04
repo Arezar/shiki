@@ -766,9 +766,26 @@
         })
     }
 
+    function openNativeTmdbSearch(title) {
+        var query = String(title || '').trim()
+        if (!query) {
+            Lampa.Noty.show(tr('shikimori_no_tmdb'))
+            return
+        }
+        // Use Lampa's own TMDB source as a fallback: it respects the app's
+        // configured TMDB proxy and native network handling.
+        Lampa.Activity.push({
+            url: 'search/multi?query=' + encodeURIComponent(query),
+            title: query,
+            component: 'category_full',
+            source: 'tmdb',
+            page: 1
+        })
+    }
+
     function openTmdbResults(results, fallbackTitle, allowAutoOpen) {
         if (!Array.isArray(results) || !results.length) {
-            Lampa.Noty.show(tr('shikimori_no_tmdb'))
+            openNativeTmdbSearch(fallbackTitle)
             return
         }
         if (results.length === 1 && allowAutoOpen) {
@@ -802,10 +819,12 @@
                     }
                 })
             } else {
-                Lampa.Noty.show(tr('shikimori_no_tmdb'))
+                openNativeTmdbSearch(fallbackTitle)
             }
         } catch (e) {
-            try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (ee) {}
+            try { openNativeTmdbSearch(fallbackTitle) } catch (ee) {
+                try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (eee) {}
+            }
         }
     }
 
