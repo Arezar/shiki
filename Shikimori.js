@@ -443,6 +443,8 @@
         cssInjected = true
         var css = [
             '.shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}',
+            '.shiki-full-wrap{height:100%;min-height:0;overflow:hidden;position:relative}',
+            '.shiki-full-wrap>.scroll{height:100%;max-height:100%;min-height:0;overflow:hidden}',
             '.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}',
             '.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:2em;padding-right:2em}',
             '.shiki-toolbar{display:block;width:100%;max-width:100%;box-sizing:border-box;padding:.45em 0 1.1em}',
@@ -1408,6 +1410,8 @@
             }
 
             slot.empty().append(sec)
+            // Related/similar cards arrive after the initial detail render; refresh Lampa's scroll bounds.
+            try { scroll.update(lastFocused || sec.find('.selector').first()[0] || sec[0], false) } catch (e) {}
             var shikiCanAppend = false
             try {
                 if (Lampa.Controller && Lampa.Controller.enabled) {
@@ -1602,6 +1606,8 @@
 
             scroll.append(box)
             setupController()
+            // Recalculate the scroll area after the complete details DOM is attached.
+            try { scroll.update(lastFocused || box.find('.selector').first()[0] || box[0], false) } catch (e) {}
 
             if (a.id) {
                 loadSecondarySections(a.id, infoBox)
