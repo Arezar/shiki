@@ -909,7 +909,7 @@
                     setupController()
                     return
                 }
-                Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1 })
+                Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1, filters: filters })
             }
             if (Lampa.Input && typeof Lampa.Input.edit === 'function') {
                 Lampa.Input.edit({
@@ -959,7 +959,7 @@
                     '<span>' + esc(t.label) + '</span></div>')
                 tab.on('hover:enter', function () {
                     if (mode === t.id && !keyword) return
-                    Lampa.Activity.replace({ search: '', mode: t.id, page: 1 })
+                    Lampa.Activity.replace({ search: '', mode: t.id, page: 1, filters: filters })
                 })
                 bar.append(tab)
             })
