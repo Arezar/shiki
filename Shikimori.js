@@ -110,7 +110,8 @@
         shikimori_full_button:  { ru: 'Кнопка Shikimori в карточке фильма', en: 'Shikimori button in movie card', uk: 'Кнопка Shikimori у картці фільму' },
         shikimori_anime_only:   { ru: 'Кнопка только для аниме и мультфильмов', en: 'Button only for anime & animation', uk: 'Кнопка лише для аніме та мультфільмів' },
         shikimori_host_label:   { ru: 'Зеркало Shikimori', en: 'Shikimori mirror', uk: 'Дзеркало Shikimori' },
-        shikimori_host_auto:    { ru: 'Автоматически', en: 'Automatic', uk: 'Автоматично' }
+        shikimori_host_auto:    { ru: 'Автоматически', en: 'Automatic', uk: 'Автоматично' },
+        shikimori_more:         { ru: 'ещё', en: 'more', uk: 'ще' }
     }
 
     function lang() {
@@ -380,7 +381,8 @@
         $('head').append('<style id="shikimori-plugin-styles">' +
             '.shiki-toolbar{display:flex;flex-wrap:wrap;padding:0.5em 0 1em;align-items:center}' +
             '.shiki-toolbar > *{margin:0 0.5em 0.5em 0}' +
-            '.shiki-tab{display:inline-flex;align-items:center;gap:0.4em;background:#1b1e27;color:#ddd;border-radius:6px;padding:0.45em 0.9em;font-size:1em;cursor:pointer;transition:background .15s}' +
+            '.shiki-tab{display:inline-flex;align-items:center;background:#1b1e27;color:#ddd;border-radius:6px;padding:0.45em 0.9em;font-size:1em;cursor:pointer;transition:background .15s}' +
+            '.shiki-tab > svg{margin-right:0.4em;flex-shrink:0}' +
             '.shiki-tab--active{background:#2d3a52;color:#fff;border:1px solid #4ea7ff}' +
             '.shiki-tab.selector--focus,.shiki-tab.focus{background:#4ea7ff;color:#fff;outline:none}' +
             '.shiki-card{display:flex;background:#1b1e27;border-radius:8px;margin-bottom:0.6em;padding:0.6em;cursor:pointer}' +
@@ -407,7 +409,8 @@
             '.shiki-full__genres span{display:inline-block;color:#4ea7ff;margin-right:0.65em;font-size:0.95em}' +
             '.shiki-full__actions{display:flex;flex-wrap:wrap;margin:0.9em 0 1.1em}' +
             '.shiki-full__actions > *{margin:0 0.7em 0.7em 0}' +
-            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center;gap:0.5em}' +
+            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}' +
+            '.shiki-full__actions .full-start__button > svg{margin-right:0.5em;flex-shrink:0}' +
             '.shiki-full__descr{margin:0.9em 0;line-height:1.55;white-space:pre-line;color:#e6e8ee}' +
             '.shiki-full__alt{color:#8c93a4;font-size:0.9em;margin-bottom:1.1em;line-height:1.4}' +
             '.shiki-section{margin-top:1.4em}' +
@@ -415,7 +418,9 @@
             '.shiki-shots{display:flex;flex-wrap:wrap}' +
             '.shiki-shots img{width:11em;height:6.2em;object-fit:cover;border-radius:6px;background:#24262f;margin:0 0.6em 0.6em 0}' +
             '.shiki-sublist{display:flex;flex-wrap:wrap}' +
-            '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;gap:0.65em;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
+            '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
+            '.shiki-subcard > img{margin-right:0.65em;flex-shrink:0}' +
+            '.shiki-subcard--more{cursor:default;background:transparent !important;opacity:0.7;pointer-events:none}' +
             '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
             '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:4px;flex-shrink:0;background:#24262f}' +
             '.shiki-subcard__body{min-width:0;flex:1}' +
@@ -697,8 +702,9 @@
         function runBatch(queries, done) {
             var qi = 0
             var acc = []
+            var fails = 0
             function next() {
-                if (qi >= queries.length) {
+                if (qi >= queries.length || fails >= 3) {
                     done(acc)
                     return
                 }
@@ -706,6 +712,8 @@
                 tmdbSearch(net, q, 'tv', function (tv) {
                     tmdbSearch(net, q, 'movie', function (mv) {
                         acc = acc.concat(tv, mv)
+                        if (!tv.length && !mv.length) fails++
+                        else fails = 0
                         next()
                     })
                 })
@@ -795,17 +803,25 @@
                 select: r
             }
         })
-        Lampa.Select.show({
-            title: tr('shikimori_choose'),
-            items: items,
-            onSelect: function (item) {
-                Lampa.Select.close()
-                gotoTmdbCard(item.select)
-            },
-            onBack: function () {
-                Lampa.Controller.toggle('content')
+        try {
+            if (Lampa.Select && typeof Lampa.Select.show === 'function') {
+                Lampa.Select.show({
+                    title: tr('shikimori_choose'),
+                    items: items,
+                    onSelect: function (item) {
+                        try { Lampa.Select.close() } catch (e) {}
+                        gotoTmdbCard(item.select)
+                    },
+                    onBack: function () {
+                        try { Lampa.Controller.toggle('content') } catch (e) {}
+                    }
+                })
+            } else {
+                Lampa.Noty.show(tr('shikimori_no_tmdb'))
             }
-        })
+        } catch (e) {
+            try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (ee) {}
+        }
     }
 
     // ---------- controller helper (standard Lampa spatial navigation) ----------
@@ -886,7 +902,7 @@
         }
 
         function bindFocusable(elements) {
-            elements.on('hover:focus mouseenter', function () {
+            elements.on('hover:focus', function () {
                 lastFocused = this
                 scroll.update(this, false)
             }).on('hover:hover hover:touch mouseenter', function () {
@@ -1148,7 +1164,7 @@
         }
 
         function bindFocusable(elements) {
-            elements.on('hover:focus mouseenter', function () {
+            elements.on('hover:focus', function () {
                 lastFocused = this
                 scroll.update(this, false)
             }).on('hover:hover hover:touch mouseenter', function () {
@@ -1190,12 +1206,12 @@
                 grid.append(card)
             })
             if (entries.length > 12) {
-                grid.append('<div class="shiki-subcard shiki-subcard--more"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc('ещё ') + (entries.length - 12) + '</div></div></div>')
+                grid.append('<div class="shiki-subcard shiki-subcard--more"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc(tr('shikimori_more')) + ' ' + (entries.length - 12) + '</div></div></div>')
             }
 
             slot.empty().append(sec)
             if (scroll && typeof scroll.update === 'function') {
-                try { scroll.update() } catch (e) {}
+                try { scroll.update(scroll.render(true), false) } catch (e) {}
             }
 
             var shikiCanAppend = false
@@ -1440,13 +1456,16 @@
     }
 
     function pushDetails(a) {
-        Lampa.Activity.push({
-            url: '',
-            title: (isRu() && a.russian) ? a.russian : a.name,
-            component: 'shikimori_full',
-            anime_id: a.id,
-            page: 1
-        })
+        if (!a || !a.id) return
+        try {
+            Lampa.Activity.push({
+                url: '',
+                title: (isRu() && a.russian) ? a.russian : a.name,
+                component: 'shikimori_full',
+                anime_id: a.id,
+                page: 1
+            })
+        } catch (e) {}
     }
 
     // ---------- open from a foreign TMDB/Lampa card ----------
@@ -1470,11 +1489,16 @@
         }
 
         var prevCtrl = 'content'
+        var prevActivity = null
         try {
             if (Lampa.Controller && Lampa.Controller.enabled) {
                 var shikiEnPrev = Lampa.Controller.enabled()
                 if (shikiEnPrev && typeof shikiEnPrev === 'object' && shikiEnPrev.name) prevCtrl = shikiEnPrev.name
             }
+        } catch (e) {}
+        try {
+            if (Lampa.Activity && typeof Lampa.Activity.active === 'function') prevActivity = Lampa.Activity.active()
+            else if (Lampa.Activity && Lampa.Activity.active) prevActivity = Lampa.Activity.active
         } catch (e) {}
         var modalNet = createNetwork(12000)
         var cancelled = false
@@ -1519,6 +1543,16 @@
                     try { Lampa.Loading.stop() } catch (e) {}
                     return
                 }
+                var shikiCurActivity = null
+                try {
+                    if (Lampa.Activity && typeof Lampa.Activity.active === 'function') shikiCurActivity = Lampa.Activity.active()
+                    else if (Lampa.Activity && Lampa.Activity.active) shikiCurActivity = Lampa.Activity.active
+                } catch (e) {}
+                if (shikiCurActivity && prevActivity && shikiCurActivity !== prevActivity) {
+                    cancelled = true
+                    try { Lampa.Loading.stop() } catch (e) {}
+                    return
+                }
                 try { Lampa.Loading.stop() } catch (e) {}
 
                 var queryNorms = queries.map(normalize).filter(Boolean)
@@ -1547,26 +1581,34 @@
                     return ya - yb
                 })
 
-                Lampa.Select.show({
-                    title: tr('shikimori_choose'),
-                    items: sorted.map(function (a) {
-                        var scoreStr = formatScore(a.score) || '—'
-                        var rawSub = kindTitle(a.kind) + ' · ' +
-                            (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
-                        return {
-                            title: esc((isRu() && a.russian) ? a.russian : a.name),
-                            subtitle: esc(rawSub),
-                            anime: a
-                        }
-                    }),
-                    onSelect: function (item) {
-                        Lampa.Select.close()
-                        pushDetails(item.anime)
-                    },
-                    onBack: function () {
-                        try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
+                try {
+                    if (Lampa.Select && typeof Lampa.Select.show === 'function') {
+                        Lampa.Select.show({
+                            title: tr('shikimori_choose'),
+                            items: sorted.map(function (a) {
+                                var scoreStr = formatScore(a.score) || '—'
+                                var rawSub = kindTitle(a.kind) + ' · ' +
+                                    (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
+                                return {
+                                    title: esc((isRu() && a.russian) ? a.russian : a.name),
+                                    subtitle: esc(rawSub),
+                                    anime: a
+                                }
+                            }),
+                            onSelect: function (item) {
+                                try { Lampa.Select.close() } catch (e) {}
+                                pushDetails(item.anime)
+                            },
+                            onBack: function () {
+                                try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
+                            }
+                        })
+                    } else {
+                        Lampa.Noty.show(tr('shikimori_empty'))
                     }
-                })
+                } catch (e) {
+                    try { Lampa.Noty.show(tr('shikimori_empty')) } catch (ee) {}
+                }
             }, function () {
                 netFails++
                 if (!cancelled) tryNext(i + 1)
@@ -1620,11 +1662,6 @@
             if (!menuHasOurs()) {
                 try { Lampa.Menu.addButton(ICON_SVG, tr('shikimori'), openMainActivity) } catch (e) {}
             }
-            Lampa.Listener.follow('menu', function (e) {
-                if (!e || e.type === 'ready') {
-                    appendToMenuDom(e && e.body ? e.body : null)
-                }
-            })
         } else {
             appendToMenuDom()
             Lampa.Listener.follow('menu', function (e) {
@@ -1784,10 +1821,19 @@
 
         // Optional button inside TMDB full card (with SVG icon + deduplication + anime filter)
         Lampa.Listener.follow('full', function (e) {
-            if (!e || e.type !== 'complite' || !Lampa.Storage.field('shikimori_button')) return
+            if (!e || e.type !== 'complite') return
+            var btnEnabled = false
+            try {
+                if (Lampa.Storage && typeof Lampa.Storage.field === 'function') btnEnabled = !!Lampa.Storage.field('shikimori_button')
+            } catch (ee) {}
+            if (!btnEnabled) return
             var movie = e.data && e.data.movie
             if (!movie) return
-            if (Lampa.Storage.field('shikimori_anime_only') !== false && !isCardLikelyAnime(movie)) return
+            var onlyAnime = true
+            try {
+                if (Lampa.Storage && typeof Lampa.Storage.field === 'function') onlyAnime = Lampa.Storage.field('shikimori_anime_only') !== false
+            } catch (ee) {}
+            if (onlyAnime && !isCardLikelyAnime(movie)) return
 
             var root = e.object && e.object.activity && e.object.activity.render && e.object.activity.render()
             if (!root) return
@@ -1802,7 +1848,7 @@
             )
             btn.on('hover:enter', function () { openShikimoriForCard(movie) })
             box.append(btn)
-            Lampa.Controller.collectionAppend(btn)
+            try { Lampa.Controller.collectionAppend(btn) } catch (ee) {}
         })
     }
 
