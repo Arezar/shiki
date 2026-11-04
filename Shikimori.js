@@ -31,13 +31,15 @@
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect width="100" height="150" fill="#24262f"/><circle cx="50" cy="75" r="18" fill="none" stroke="#3a3f4e" stroke-width="3"/></svg>'
     )
 
-    // Precompile Unicode property regex at runtime so ES5 parsers never fail at parse time
+    // Precompile Unicode property regex at runtime so ES5 parsers never fail at parse time;
+    // FALLBACK_NORM_RE covers Latin/Extended, Cyrillic, Hiragana, Katakana, Kanji/CJK, Hangul & Fullwidth in pure ES5
     var UNICODE_NORM_RE = null
     try {
         UNICODE_NORM_RE = new RegExp('[^\\p{L}\\p{N}]+', 'gu')
     } catch (e) {
         UNICODE_NORM_RE = null
     }
+    var FALLBACK_NORM_RE = /[^a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0400-\u052f\u1100-\u11ff\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]+/gi
 
     // ---------- in-memory TTL cache ----------
     var cacheStore = {}
@@ -261,7 +263,7 @@
         if (UNICODE_NORM_RE) {
             return str.replace(UNICODE_NORM_RE, ' ').trim()
         }
-        return str.replace(/[^a-z0-9\u0430-\u044f\u0451\u0456\u0457\u0491\u0454]+/gi, ' ').trim()
+        return str.replace(FALLBACK_NORM_RE, ' ').trim()
     }
 
     function stripSeasonSuffix(title) {
@@ -445,12 +447,21 @@
         return net
     }
 
+    function isValidShikiPayload(res, opts) {
+        if (res === false || res === undefined || res === null) return false
+        if (opts && opts.expectArray) return Array.isArray(res)
+        if (opts && opts.expectObject) {
+            return typeof res === 'object' && !Array.isArray(res) && Boolean(res.id)
+        }
+        return true
+    }
+
     function shikiRequest(net, pathAndQuery, success, failure, options) {
         var opts = options || {}
         var cacheKey = 'animes:' + pathAndQuery
         if (!opts.noCache) {
             var hit = cacheGet(cacheKey)
-            if (hit !== undefined) {
+            if (hit !== undefined && isValidShikiPayload(hit, opts)) {
                 success(hit)
                 return
             }
@@ -480,6 +491,10 @@
                         tryCandidate(idx + 1)
                         return
                     }
+                }
+                if (!isValidShikiPayload(res, opts)) {
+                    tryCandidate(idx + 1)
+                    return
                 }
                 var foundIdx = HOSTS.indexOf(host)
                 if (foundIdx >= 0) hostIdx = foundIdx
@@ -512,7 +527,7 @@
         } else {
             query = base + '&status=ongoing&order=popularity'
         }
-        shikiRequest(net, query, success, failure)
+        shikiRequest(net, query, success, failure, { expectArray: true })
     }
 
     function shikiSearch(net, query, page, success, failure) {
@@ -520,15 +535,15 @@
     }
 
     function shikiDetails(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id), success, failure)
+        shikiRequest(net, '/' + encodeURIComponent(id), success, failure, { expectObject: true })
     }
 
     function shikiRelated(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id) + '/related', success, failure)
+        shikiRequest(net, '/' + encodeURIComponent(id) + '/related', success, failure, { expectArray: true })
     }
 
     function shikiSimilar(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id) + '/similar', success, failure)
+        shikiRequest(net, '/' + encodeURIComponent(id) + '/similar', success, failure, { expectArray: true })
     }
 
     // ---------- TMDB lookup & scoring ----------
@@ -570,26 +585,34 @@
         })
     }
 
+    function isSubstrTitleMatch(a, b) {
+        if (!a || !b) return false
+        var minLen = Math.min(a.length, b.length)
+        var threshold = /[\u3400-\u9fff\uf900-\ufaff]/.test(a) || /[\u3400-\u9fff\uf900-\ufaff]/.test(b) ? 2 : 3
+        if (minLen < threshold) return false
+        return a.indexOf(b) >= 0 || b.indexOf(a) >= 0
+    }
+
     function scoreTmdbCandidate(candidate, targetNorms, targetYear, targetKind) {
-        if (!candidate) return -100
+        if (!candidate) return { score: -100, titleMatched: false, exactTitle: false }
         var score = 0
         var origNorm = normalize(candidate.original_title || candidate.original_name || '')
         var locNorm = normalize(candidate.title || candidate.name || '')
 
         var titleMatched = false
+        var exactTitle = false
         for (var i = 0; i < targetNorms.length; i++) {
             var tn = targetNorms[i]
             if (!tn) continue
             if (origNorm === tn || locNorm === tn) {
                 score += 60
                 titleMatched = true
+                exactTitle = true
                 break
             }
-            if ((origNorm && (origNorm.indexOf(tn) >= 0 || tn.indexOf(origNorm) >= 0)) ||
-                (locNorm && (locNorm.indexOf(tn) >= 0 || tn.indexOf(locNorm) >= 0))) {
+            if (isSubstrTitleMatch(origNorm, tn) || isSubstrTitleMatch(locNorm, tn)) {
                 score += 25
                 titleMatched = true
-                break
             }
         }
 
@@ -617,7 +640,7 @@
             }
         }
 
-        return { score: score, titleMatched: titleMatched }
+        return { score: score, titleMatched: titleMatched, exactTitle: exactTitle }
     }
 
     function tmdbForAnime(animeOrOrig, maybeRussian, maybeCallback, optionalNet) {
@@ -637,7 +660,7 @@
         var engFirst = (Array.isArray(animeObj.english) && animeObj.english[0]) ? animeObj.english[0] : ''
         var primaryQueries = dedupeQueries([animeObj.name, engFirst, animeObj.russian])
         if (!primaryQueries.length) {
-            callback([])
+            callback([], false)
             return
         }
 
@@ -694,20 +717,21 @@
                 }
             }
             if (!uniq.length) {
-                callback([])
+                callback([], false)
                 return
             }
 
             var scored = uniq.map(function (r) {
                 var res = scoreTmdbCandidate(r, targetNorms, targetYear, animeObj.kind)
-                return { item: r, score: res.score, titleMatched: res.titleMatched }
+                return { item: r, score: res.score, titleMatched: res.titleMatched, exactTitle: res.exactTitle }
             })
 
             scored.sort(function (a, b) { return b.score - a.score })
 
-            var matched = scored.filter(function (s) { return s.titleMatched || s.score >= 55 })
+            var matched = scored.filter(function (s) { return s.titleMatched })
+            var confidentSingle = matched.length === 1 && (matched[0].exactTitle || matched[0].score >= 65)
             var chosen = (matched.length ? matched : scored.slice(0, 10)).map(function (s) { return s.item })
-            callback(chosen)
+            callback(chosen, confidentSingle)
         }
 
         runBatch(primaryQueries, function (firstBatch) {
@@ -741,24 +765,25 @@
         })
     }
 
-    function openTmdbResults(results, fallbackTitle) {
-        if (!results || !results.length) {
+    function openTmdbResults(results, fallbackTitle, allowAutoOpen) {
+        if (!Array.isArray(results) || !results.length) {
             Lampa.Noty.show(tr('shikimori_no_tmdb'))
             return
         }
-        if (results.length === 1) {
+        if (results.length === 1 && allowAutoOpen) {
             gotoTmdbCard(results[0])
             return
         }
         var items = results.map(function (r) {
             var d = r.first_air_date || r.release_date || ''
             var vote = r.vote_average ? Number(r.vote_average).toFixed(1) : '—'
+            var rawSubtitle = (r.original_title || r.original_name || '') + ' · ' +
+                (d ? d.substr(0, 4) : '—') + ' · ' +
+                (r.media_type === 'movie' ? tr('shikimori_movie') : tr('shikimori_series')) + ' · ' +
+                tr('shikimori_rate') + ' ' + vote
             return {
-                title: r.title || r.name || fallbackTitle || '?',
-                subtitle: (r.original_title || r.original_name || '') + ' · ' +
-                    (d ? d.substr(0, 4) : '—') + ' · ' +
-                    (r.media_type === 'movie' ? tr('shikimori_movie') : tr('shikimori_series')) + ' · ' +
-                    tr('shikimori_rate') + ' ' + vote,
+                title: esc(r.title || r.name || fallbackTitle || '?'),
+                subtitle: esc(rawSubtitle),
                 select: r
             }
         })
@@ -937,8 +962,10 @@
         }
 
         function appendCards(listContainer, animes) {
+            if (!Array.isArray(animes)) return null
             var firstAdded = null
             animes.forEach(function (a) {
+                if (!a || typeof a !== 'object') return
                 var card = createCardElement(a)
                 if (!firstAdded) firstAdded = card[0]
                 listContainer.append(card)
@@ -963,7 +990,12 @@
                 var listContainer = scroll.body().find('.shiki-list')
                 listContainer.find('.shiki-more').remove()
 
-                if (!animes || !animes.length) {
+                if (!Array.isArray(animes)) {
+                    Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
+                    Lampa.Controller.collectionSet(scroll.render(true))
+                    return
+                }
+                if (!animes.length) {
                     hasMore = false
                     Lampa.Controller.collectionSet(scroll.render(true))
                     return
@@ -994,13 +1026,13 @@
             scroll.append(toolbar)
             scroll.append(listContainer)
 
-            if (isError) {
+            if (isError || !Array.isArray(animes)) {
                 var retry = $('<div class="shiki-retry selector">' + esc(tr('shikimori_retry')) + '</div>')
                 retry.on('hover:enter', fetchFirstPage)
                 bindFocusable(retry)
                 listContainer.append('<div class="shiki-empty">' + esc(tr('shikimori_error')) + '</div>')
                 listContainer.append(retry)
-            } else if (!animes || !animes.length) {
+            } else if (!animes.length) {
                 listContainer.append('<div class="shiki-empty">' + esc(tr('shikimori_empty')) + '</div>')
             } else {
                 appendCards(listContainer, animes)
@@ -1184,9 +1216,10 @@
                 if (studioNames.length) facts.push(tr('shikimori_studios') + ': ' + studioNames.join(', '))
             }
 
-            var genresHtml = (a.genres || []).map(function (g) {
+            var genresHtml = (Array.isArray(a.genres) ? a.genres : []).map(function (g) {
+                if (!g) return ''
                 return '<span>#' + esc(isRu() && g.russian ? g.russian : g.name) + '</span>'
-            }).join(' ')
+            }).filter(Boolean).join(' ')
 
             var altNames = dedupeQueries([].concat(a.english || [], a.japanese || [], a.synonyms || []))
             var altText = altNames.length ? altNames.map(esc).join(', ') : '—'
@@ -1246,11 +1279,11 @@
                     Lampa.Loading.stop()
                     setupController()
                 })
-                tmdbForAnime(anime, function (results) {
+                tmdbForAnime(anime, function (results, confidentSingle) {
                     if (cancelled || destroyed) return
                     Lampa.Loading.stop()
                     tmdbBusy = false
-                    openTmdbResults(results, anime.russian || anime.name)
+                    openTmdbResults(results, anime.russian || anime.name, confidentSingle)
                 }, tmdbNet)
             })
 
@@ -1262,11 +1295,17 @@
                     }
                     Lampa.Select.show({
                         title: tr('shikimori_trailer'),
-                        items: trailers,
+                        items: trailers.map(function (t) {
+                            return {
+                                title: esc(t.title),
+                                subtitle: esc(t.subtitle),
+                                video: t
+                            }
+                        }),
                         onSelect: function (item) {
                             Lampa.Select.close()
                             setupController()
-                            playYoutubeVideo(item, trailers)
+                            playYoutubeVideo(item.video, trailers)
                         },
                         onBack: function () {
                             setupController()
@@ -1394,12 +1433,27 @@
             }
             shikiSearch(modalNet, queries[i], 1, function (animes) {
                 if (cancelled) return
-                if (!animes || !animes.length) {
+                if (!Array.isArray(animes) || !animes.length) {
                     tryNext(i + 1)
                     return
                 }
                 Lampa.Loading.stop()
-                if (animes.length === 1) {
+
+                var queryNorms = queries.map(normalize).filter(Boolean)
+                var singleConfident = false
+                if (animes.length === 1 && animes[0]) {
+                    var candNames = dedupeQueries([animes[0].name, animes[0].russian]).map(normalize)
+                    for (var qi = 0; qi < queryNorms.length && !singleConfident; qi++) {
+                        for (var ci = 0; ci < candNames.length; ci++) {
+                            if (candNames[ci] && (candNames[ci] === queryNorms[qi] || isSubstrTitleMatch(candNames[ci], queryNorms[qi]))) {
+                                singleConfident = true
+                                break
+                            }
+                        }
+                    }
+                }
+
+                if (animes.length === 1 && singleConfident) {
                     pushDetails(animes[0])
                     return
                 }
@@ -1415,10 +1469,11 @@
                     title: tr('shikimori_choose'),
                     items: sorted.map(function (a) {
                         var scoreStr = formatScore(a.score) || '—'
+                        var rawSub = kindTitle(a.kind) + ' · ' +
+                            (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
                         return {
-                            title: (isRu() && a.russian) ? a.russian : a.name,
-                            subtitle: kindTitle(a.kind) + ' · ' +
-                                (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr,
+                            title: esc((isRu() && a.russian) ? a.russian : a.name),
+                            subtitle: esc(rawSub),
                             anime: a
                         }
                     }),
