@@ -16,8 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var UA = 'LampaShikimoriPlugin/1.2'
-    var VERSION = '1.2.0'
+    var VERSION = '1.3.0'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -420,7 +419,7 @@
             '.shiki-sublist{display:flex;flex-wrap:wrap}' +
             '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
             '.shiki-subcard > img{margin-right:0.65em;flex-shrink:0}' +
-            '.shiki-subcard--more{cursor:default;background:transparent !important;opacity:0.7;pointer-events:none}' +
+            '.shiki-subcard--more{cursor:pointer;background:#1b1e27 !important;opacity:0.9}' +
             '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
             '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:4px;flex-shrink:0;background:#24262f}' +
             '.shiki-subcard__body{min-width:0;flex:1}' +
@@ -453,6 +452,14 @@
 
     function createNetwork(timeoutMs) {
         var net = new Lampa.Reguest()
+        var originalClear = net && typeof net.clear === 'function' ? net.clear : null
+        if (net) {
+            net._shikiCancelled = false
+            net.clear = function () {
+                net._shikiCancelled = true
+                if (originalClear) return originalClear.apply(net, arguments)
+            }
+        }
         if (net && typeof net.timeout === 'function') {
             net.timeout(timeoutMs || 12000)
         }
@@ -470,6 +477,8 @@
 
     function shikiRequest(net, pathAndQuery, success, failure, options) {
         var opts = options || {}
+        var requestNet = net || createNetwork(12000)
+        if (requestNet && requestNet._shikiCancelled) return
         var cacheKey = 'animes:' + pathAndQuery
         if (!opts.noCache) {
             var hit = cacheGet(cacheKey)
@@ -480,46 +489,48 @@
         }
 
         var candidates = getHostCandidates()
-        var requestNet = net || createNetwork(12000)
 
         function tryCandidate(idx) {
+            if (requestNet && requestNet._shikiCancelled) return
             if (idx >= candidates.length) {
                 if (failure) failure()
                 return
             }
             var host = candidates[idx]
             var url = host + '/api/animes' + pathAndQuery
-            requestNet.silent(url, function (res) {
-                if (res === false || res === undefined || res === null) {
-                    tryCandidate(idx + 1)
-                    return
-                }
-                if (typeof res === 'object' && !Array.isArray(res)) {
-                    if (res.code === 404) {
-                        if (failure) failure(res)
-                        return
-                    }
-                    if (res.error || res.retry_later) {
+            try {
+                requestNet.silent(url, function (res) {
+                    if (requestNet && requestNet._shikiCancelled) return
+                    if (res === false || res === undefined || res === null) {
                         tryCandidate(idx + 1)
                         return
                     }
-                }
-                if (!isValidShikiPayload(res, opts)) {
+                    if (typeof res === 'object' && !Array.isArray(res)) {
+                        if (res.code === 404) {
+                            tryCandidate(idx + 1)
+                            return
+                        }
+                        if (res.error || res.retry_later) {
+                            tryCandidate(idx + 1)
+                            return
+                        }
+                    }
+                    if (!isValidShikiPayload(res, opts)) {
+                        tryCandidate(idx + 1)
+                        return
+                    }
+                    var foundIdx = HOSTS.indexOf(host)
+                    if (foundIdx >= 0) hostIdx = foundIdx
+                    var isEmptyArray = Array.isArray(res) && res.length === 0
+                    if (!isEmptyArray) cacheSet(cacheKey, res)
+                    success(res)
+                }, function () {
+                    if (requestNet && requestNet._shikiCancelled) return
                     tryCandidate(idx + 1)
-                    return
-                }
-                var foundIdx = HOSTS.indexOf(host)
-                if (foundIdx >= 0) hostIdx = foundIdx
-                var isEmptyArray = Array.isArray(res) && res.length === 0
-                if (!isEmptyArray) cacheSet(cacheKey, res)
-                success(res)
-            }, function (jqXHR) {
-                if (jqXHR && jqXHR.status === 404) {
-                    if (failure) failure(jqXHR)
-                    return
-                }
+                }, null, { headers: { 'Accept': 'application/json' } })
+            } catch (e) {
                 tryCandidate(idx + 1)
-            }, null, { headers: { 'User-Agent': UA } })
+            }
         }
 
         tryCandidate(0)
@@ -527,7 +538,7 @@
 
     function shikiCatalog(net, mode, keyword, page, success, failure) {
         var p = page || 1
-        var base = '?limit=' + PAGE + '&page=' + p + '&censored=false'
+        var base = '?limit=' + PAGE + '&page=' + p + '&censored=true'
         var query
         if (mode === 'search' && keyword) {
             query = base + '&search=' + encodeURIComponent(keyword)
@@ -581,21 +592,27 @@
     }
 
     function tmdbSearch(net, name, type, cb) {
-        net.silent(tmdbUrl('search/' + type, 'query=' + encodeURIComponent(name)), function (res) {
-            var arr = (res && Array.isArray(res.results)) ? res.results : []
-            var stamped = []
-            for (var i = 0; i < arr.length; i++) {
-                var copy = {}
-                for (var k in arr[i]) {
-                    if (Object.prototype.hasOwnProperty.call(arr[i], k)) copy[k] = arr[i][k]
+        if (net && net._shikiCancelled) return
+        try {
+            net.silent(tmdbUrl('search/' + type, 'query=' + encodeURIComponent(name)), function (res) {
+                if (net && net._shikiCancelled) return
+                var arr = (res && Array.isArray(res.results)) ? res.results : []
+                var stamped = []
+                for (var i = 0; i < arr.length; i++) {
+                    var copy = {}
+                    for (var k in arr[i]) {
+                        if (Object.prototype.hasOwnProperty.call(arr[i], k)) copy[k] = arr[i][k]
+                    }
+                    copy.media_type = arr[i].media_type || type
+                    if (type !== 'multi' || copy.media_type === 'tv' || copy.media_type === 'movie') stamped.push(copy)
                 }
-                copy.media_type = type
-                stamped.push(copy)
-            }
-            cb(stamped)
-        }, function () {
-            cb([])
-        })
+                cb(stamped)
+            }, function () {
+                if (!(net && net._shikiCancelled)) cb([])
+            })
+        } catch (e) {
+            if (!(net && net._shikiCancelled)) cb([])
+        }
     }
 
     function isSubstrTitleMatch(a, b) {
@@ -709,13 +726,11 @@
                     return
                 }
                 var q = queries[qi++]
-                tmdbSearch(net, q, 'tv', function (tv) {
-                    tmdbSearch(net, q, 'movie', function (mv) {
-                        acc = acc.concat(tv, mv)
-                        if (!tv.length && !mv.length) fails++
-                        else fails = 0
-                        next()
-                    })
+                tmdbSearch(net, q, 'multi', function (results) {
+                    acc = acc.concat(results)
+                    if (!results.length) fails++
+                    else fails = 0
+                    next()
                 })
             }
             next()
@@ -1150,6 +1165,9 @@
         var destroyed = false
         var anime = null
         var tmdbBusy = false
+        var tmdbNet = null
+        var tmdbLoading = false
+        var secondaryNets = []
         var lastFocused = null
 
         function setLoader(active) {
@@ -1177,12 +1195,13 @@
             activateContentController(scroll, function () { return lastFocused })
         }
 
-        function renderSubSection(slot, titleText, entries) {
+        function renderSubSection(slot, titleText, entries, visibleLimit) {
             if (destroyed || !entries || !entries.length) return
+            var limit = visibleLimit || 12
             var sec = $('<div class="shiki-section"><div class="shiki-section__title">' + esc(titleText) + '</div><div class="shiki-sublist"></div></div>')
             var grid = sec.find('.shiki-sublist')
 
-            entries.slice(0, 12).forEach(function (entry) {
+            entries.slice(0, limit).forEach(function (entry) {
                 var a = entry.anime
                 var name = (isRu() && a.russian) ? a.russian : a.name
                 var sub = entry.subtitle || [
@@ -1205,8 +1224,23 @@
                 bindFocusable(card)
                 grid.append(card)
             })
-            if (entries.length > 12) {
-                grid.append('<div class="shiki-subcard shiki-subcard--more"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc(tr('shikimori_more')) + ' ' + (entries.length - 12) + '</div></div></div>')
+            if (entries.length > limit) {
+                var more = $('<div class="shiki-subcard shiki-subcard--more selector"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc(tr('shikimori_more')) + ' ' + (entries.length - limit) + '</div></div></div>')
+                more.on('hover:enter', function () {
+                    var nextLimit = Math.min(limit + 12, entries.length)
+                    renderSubSection(slot, titleText, entries, nextLimit)
+                    var target = slot.find('.shiki-subcard').eq(limit)[0]
+                    if (target) {
+                        lastFocused = target
+                        try {
+                            var collection = scroll.render(true)
+                            Lampa.Controller.collectionSet(collection)
+                            Lampa.Controller.collectionFocus(target, collection)
+                        } catch (e) {}
+                    }
+                })
+                bindFocusable(more)
+                grid.append(more)
             }
 
             slot.empty().append(sec)
@@ -1232,7 +1266,11 @@
             infoBox.append(relatedSlot)
             infoBox.append(similarSlot)
 
-            shikiRelated(net, animeId, function (relList) {
+            var relatedNet = createNetwork(12000)
+            var similarNet = createNetwork(12000)
+            secondaryNets.push(relatedNet, similarNet)
+
+            shikiRelated(relatedNet, animeId, function (relList) {
                 if (destroyed || !Array.isArray(relList)) return
                 var items = []
                 for (var i = 0; i < relList.length; i++) {
@@ -1247,7 +1285,7 @@
                 renderSubSection(relatedSlot, tr('shikimori_related'), items)
             })
 
-            shikiSimilar(net, animeId, function (simList) {
+            shikiSimilar(similarNet, animeId, function (simList) {
                 if (destroyed || !Array.isArray(simList)) return
                 var items = []
                 for (var i = 0; i < simList.length; i++) {
@@ -1340,25 +1378,36 @@
             box.find('.shiki-tmdb-btn').on('hover:enter', function () {
                 if (tmdbBusy || !anime) return
                 tmdbBusy = true
-                var tmdbNet = createNetwork(12000)
+                tmdbNet = createNetwork(12000)
+                var currentNet = tmdbNet
                 var cancelled = false
+                tmdbLoading = true
                 try {
                     Lampa.Loading.start(function () {
                         cancelled = true
                         tmdbBusy = false
-                        try { tmdbNet.clear() } catch (e) {}
-                        try { Lampa.Loading.stop() } catch (e) {}
-                        setupController()
+                        try { currentNet.clear() } catch (e) {}
+                        if (tmdbNet === currentNet) tmdbNet = null
+                        if (tmdbLoading) {
+                            tmdbLoading = false
+                            try { Lampa.Loading.stop() } catch (ee) {}
+                        }
+                        if (!destroyed) setupController()
                     })
                 } catch (e) {
                     try { Lampa.Loading.start() } catch (ee) {}
                 }
                 tmdbForAnime(anime, function (results, confidentSingle) {
-                    if (cancelled || destroyed) return
-                    try { Lampa.Loading.stop() } catch (e) {}
+                    if (cancelled || (currentNet && currentNet._shikiCancelled)) return
+                    if (tmdbLoading) {
+                        tmdbLoading = false
+                        try { Lampa.Loading.stop() } catch (e) {}
+                    }
+                    if (tmdbNet === currentNet) tmdbNet = null
                     tmdbBusy = false
+                    if (destroyed) return
                     openTmdbResults(results, anime.russian || anime.name, confidentSingle)
-                }, tmdbNet)
+                }, currentNet)
             })
 
             if (trailers.length) {
@@ -1447,6 +1496,19 @@
         this.destroy = function () {
             destroyed = true
             net.clear()
+            for (var ni = 0; ni < secondaryNets.length; ni++) {
+                try { secondaryNets[ni].clear() } catch (e) {}
+            }
+            secondaryNets = []
+            if (tmdbNet) {
+                try { tmdbNet.clear() } catch (e) {}
+                tmdbNet = null
+            }
+            tmdbBusy = false
+            if (tmdbLoading) {
+                tmdbLoading = false
+                try { Lampa.Loading.stop() } catch (e) {}
+            }
             scroll.destroy()
             html.remove()
         }
