@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.4.0'
+    var VERSION = '1.5.1'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -253,28 +253,80 @@
         return PLACEHOLDER
     }
 
-    function posterOf(a, highRes) {
-        if (!a) return PLACEHOLDER
-        if (a.poster) {
-            var gqlUrl = highRes ? (a.poster.originalUrl || a.poster.mainUrl) : (a.poster.mainUrl || a.poster.originalUrl)
-            if (gqlUrl) return resolveImageUrl(gqlUrl)
+    function posterCandidates(a, highRes) {
+        if (!a) return []
+        var paths = []
+        function add(path) {
+            if (path && typeof path === 'string' && paths.indexOf(path) < 0) paths.push(path)
         }
-        if (!a.image) return PLACEHOLDER
-        var path = highRes ? (a.image.original || a.image.preview) : (a.image.preview || a.image.original)
-        return resolveImageUrl(path)
+        if (a.poster) {
+            if (highRes) { add(a.poster.originalUrl); add(a.poster.mainUrl) }
+            else { add(a.poster.mainUrl); add(a.poster.originalUrl) }
+        }
+        if (a.image) {
+            if (highRes) { add(a.image.original); add(a.image.preview) }
+            else { add(a.image.preview); add(a.image.original) }
+            add(a.image.x96)
+            add(a.image.x48)
+        }
+        var urls = []
+        function push(url) {
+            if (url && url !== PLACEHOLDER && urls.indexOf(url) < 0) urls.push(url)
+        }
+        paths.forEach(function (path) {
+            var p = String(path).trim()
+            if (!p) return
+            if (p.indexOf('//') === 0) {
+                push('https:' + p)
+                var protocolPath = p.substr(2)
+                for (var pi = 0; pi < HOSTS.length; pi++) {
+                    var hostName = HOSTS[pi].replace('https://', '').replace('http://', '')
+                    if (protocolPath.indexOf(hostName + '/') === 0) {
+                        for (var pj = 0; pj < HOSTS.length; pj++) {
+                            if (pi !== pj) push(HOSTS[pj] + protocolPath.substr(hostName.length))
+                        }
+                    }
+                }
+                return
+            }
+            if (p.indexOf('https://') === 0 || p.indexOf('http://') === 0) {
+                push(p)
+                for (var hi = 0; hi < HOSTS.length; hi++) {
+                    for (var hj = 0; hj < HOSTS.length; hj++) {
+                        if (hi !== hj && p.indexOf(HOSTS[hi] + '/') === 0) push(HOSTS[hj] + p.substr(HOSTS[hi].length))
+                    }
+                }
+                return
+            }
+            if (p.charAt(0) !== '/') p = '/' + p
+            push(activeHost() + p)
+            for (var h = 0; h < HOSTS.length; h++) push(HOSTS[h] + p)
+        })
+        return urls
     }
 
-    function bindImgFallback(container) {
-        container.find('img').on('error', function () {
-            try {
-                if (this.dataset && this.dataset.shikiFallback) return
-                if (this.dataset) this.dataset.shikiFallback = '1'
-                else this._shikiFallback = 1
-            } catch (e) {
+    function posterOf(a, highRes) {
+        var candidates = posterCandidates(a, highRes)
+        return candidates.length ? candidates[0] : PLACEHOLDER
+    }
+
+    function bindImgFallback(container, anime, posterSelector, highRes) {
+        container.find('img').each(function () {
+            var img = this
+            if (anime && (!posterSelector || $(img).is(posterSelector))) {
+                img._shikiPosterCandidates = posterCandidates(anime, !!highRes)
+                img._shikiPosterIndex = 0
+            }
+            $(img).on('error', function () {
+                if (this._shikiPosterCandidates && this._shikiPosterIndex + 1 < this._shikiPosterCandidates.length) {
+                    this._shikiPosterIndex++
+                    this.src = this._shikiPosterCandidates[this._shikiPosterIndex]
+                    return
+                }
                 if (this._shikiFallback) return
                 this._shikiFallback = 1
-            }
-            this.src = PLACEHOLDER
+                this.src = PLACEHOLDER
+            })
         })
     }
 
@@ -389,7 +441,73 @@
     function injectCss() {
         if (cssInjected) return
         cssInjected = true
-        $('head').append('<style id="shikimori-plugin-styles">' + ".shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:1.1em;padding-right:1.1em}.shiki-toolbar{display:flex;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box;padding:.5em 0 1.15em}.shiki-toolbar>*{margin:0 .55em .55em 0;max-width:100%;box-sizing:border-box}.shiki-tab{display:inline-flex;align-items:center;justify-content:center;min-height:2.7em;max-width:100%;box-sizing:border-box;padding:.55em 1em;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.08);border-radius:.35em;font-size:1em;cursor:pointer}.shiki-tab>svg{margin-right:.45em;flex-shrink:0}.shiki-tab--active{background:rgba(255,255,255,.13);color:#fff;border-color:rgba(255,255,255,.32)}.shiki-tab.selector--focus,.shiki-tab.focus{background:rgba(255,255,255,.2);border-color:#fff;color:#fff;outline:2px solid rgba(255,255,255,.65)}.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}.shiki-card{display:flex;align-items:center;width:100%;min-height:9em;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.45em;margin:0 0 .65em;padding:.65em;cursor:pointer}.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}.shiki-card__poster{flex:0 0 auto}.shiki-card__poster img{width:7em;height:10.2em;max-width:22vw;object-fit:cover;border-radius:.25em;display:block;background:rgba(255,255,255,.08)}.shiki-card__body{padding:.35em 1em;flex:1;min-width:0;overflow:hidden}.shiki-card__name{font-size:1.22em;font-weight:600;line-height:1.3;white-space:normal;overflow-wrap:break-word}.shiki-card__orig{color:rgba(255,255,255,.58);margin:.25em 0;font-size:.92em;white-space:normal}.shiki-card__meta{color:rgba(255,255,255,.7);font-size:.9em;margin-top:.45em;line-height:1.45}.shiki-card__score{color:#ffc36a;font-weight:bold;white-space:nowrap}.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.68);font-size:1.05em}.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.06);color:rgba(255,255,255,.9);padding:.9em 1.2em;text-align:center;border:1px solid rgba(255,255,255,.1);border-radius:.4em;margin:.65em 0 1.2em;cursor:pointer;font-weight:600}.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:rgba(255,255,255,.18);border-color:#fff;color:#fff}.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}.shiki-full__img{width:14em;height:20em;max-width:30vw;object-fit:cover;border-radius:.4em;display:block;background:rgba(255,255,255,.08)}.shiki-full__info{flex:1;min-width:0;max-width:none}.shiki-full__title{font-size:1.8em;margin:0 0 .15em;line-height:1.2;overflow-wrap:break-word}.shiki-full__orig{font-size:1.05em;color:rgba(255,255,255,.58);margin:0 0 .7em;font-weight:normal}.shiki-full__facts{margin-bottom:.6em;line-height:1.7}.shiki-full__facts span{display:inline-block;background:rgba(255,255,255,.08);border-radius:.25em;padding:.2em .55em;margin:.15em .35em .15em 0;font-size:.9em}.shiki-full__genres{margin-bottom:.8em}.shiki-full__genres span{display:inline-block;color:rgba(255,255,255,.7);margin-right:.65em;font-size:.92em}.shiki-full__actions{display:flex;flex-wrap:wrap;align-items:center;margin:.9em 0 1.1em}.shiki-full__actions>*{margin:0 .7em .7em 0}.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}.shiki-full__actions .full-start__button>svg{margin-right:.5em;flex-shrink:0}.shiki-full__descr{margin:.9em 0;line-height:1.55;white-space:pre-line;color:rgba(255,255,255,.88)}.shiki-full__alt{color:rgba(255,255,255,.55);font-size:.88em;margin-bottom:1.1em;line-height:1.4;overflow-wrap:break-word}.shiki-section{margin-top:1.4em;width:100%;box-sizing:border-box}.shiki-section__title{font-size:1.15em;font-weight:600;margin-bottom:.6em;color:#fff}.shiki-shots{display:flex;flex-wrap:wrap}.shiki-shots img{width:11em;height:6.2em;max-width:42vw;object-fit:cover;border-radius:.3em;background:rgba(255,255,255,.08);margin:0 .6em .6em 0}.shiki-sublist{display:flex;flex-wrap:wrap;width:100%;box-sizing:border-box}.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.35em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.07)!important;opacity:1}.shiki-subcard.selector--focus,.shiki-subcard.focus{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.45);outline-offset:-2px}.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.25em;flex-shrink:0;background:rgba(255,255,255,.08)}.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.58);margin-top:.15em;white-space:normal}.shiki-filter-summary{flex:1 0 100%;padding:.15em .2em .45em;color:rgba(255,255,255,.62);font-size:.82em;line-height:1.4;white-space:normal;overflow-wrap:break-word}.shiki-local-loading{opacity:.6;pointer-events:none}@media (max-width:900px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.5em;padding-right:.5em}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}" + '</style>')
+        var css = [
+            '.shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}',
+            '.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}',
+            '.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:2em;padding-right:2em}',
+            '.shiki-toolbar{display:block;width:100%;max-width:100%;box-sizing:border-box;padding:.45em 0 1.1em}',
+            '.shiki-toolbar__tools,.shiki-toolbar__tabs{display:flex;flex-flow:row wrap;align-items:stretch;width:100%;max-width:100%;box-sizing:border-box}',
+            '.shiki-toolbar__tools{margin-bottom:.35em}',
+            '.shiki-toolbar .shiki-tab{display:flex;align-items:center;box-sizing:border-box;min-width:0;max-width:100%;min-height:2.8em;padding:.35em 1.05em;margin:0 .5em .5em 0;background:rgba(255,255,255,.055);border:0;border-radius:1em;color:rgba(255,255,255,.88);font-size:1.02em;line-height:1.2;cursor:pointer}',
+            '.shiki-toolbar__tools .shiki-tab--search{flex:1 1 18em;justify-content:flex-start;text-align:left}',
+            '.shiki-toolbar__tools .shiki-tab--filter{flex:0 0 auto;justify-content:center;min-width:8em}',
+            '.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 9em;justify-content:center;text-align:center}',
+            '.shiki-toolbar .shiki-tab>svg{display:block;width:1.25em!important;height:1.25em!important;min-width:1.25em;max-width:1.25em;flex:0 0 1.25em;margin:0 .7em 0 0}',
+            '.shiki-toolbar .shiki-tab>span{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-toolbar__tools .shiki-tab--search>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.shiki-toolbar .shiki-tab--active{background:rgba(255,255,255,.13);box-shadow:inset 0 -.16em 0 #efbd70;color:#fff}',
+            '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
+            '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}',
+            '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
+            '.shiki-card{display:flex;align-items:center;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.1);border-radius:0;margin:0;padding:.8em .55em;cursor:pointer}',
+            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.09);border-bottom-color:transparent;border-radius:.32em;box-shadow:inset 0 0 0 2px rgba(255,255,255,.72);outline:none}',
+            '.shiki-card__poster{flex:0 0 auto;width:6.8em}',
+            '.shiki-card__poster img{display:block;width:100%;height:10.2em;max-width:100%;object-fit:cover;border-radius:.28em;background:rgba(255,255,255,.07)}',
+            '.shiki-card__body{flex:1 1 auto;width:auto;min-width:0;box-sizing:border-box;padding:.25em .45em .25em 1.2em;overflow:visible}',
+            '.shiki-card__name{display:block;max-width:100%;font-size:1.22em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
+            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.32em 0 0;font-size:.88em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card__meta{display:block;max-width:100%;margin-top:.55em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card__meta-item{display:inline}',
+            '.shiki-card__meta-item+.shiki-card__meta-item:before{content:"·";display:inline-block;margin:0 .55em;color:rgba(255,255,255,.38)}',
+            '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
+            '.shiki-card__score{color:#f0c477;font-weight:700;white-space:nowrap}',
+            '.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.65);font-size:1em}',
+            '.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.8em 0 1.2em;cursor:pointer;font-weight:600}',
+            '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#fff;color:#111;outline:none}',
+            '.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}',
+            '.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}',
+            '.shiki-full__img{width:14em;height:20em;max-width:30vw;object-fit:cover;border-radius:.3em;display:block;background:rgba(255,255,255,.06)}',
+            '.shiki-full__info{flex:1;min-width:0;max-width:none}',
+            '.shiki-full__title{font-size:1.8em;margin:0 0 .15em;line-height:1.2;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-full__orig{font-size:1.05em;color:rgba(255,255,255,.55);margin:0 0 .7em;font-weight:normal}',
+            '.shiki-full__facts{margin-bottom:.6em;line-height:1.7}',
+            '.shiki-full__facts span{display:inline-block;background:rgba(255,255,255,.07);border-radius:.2em;padding:.2em .55em;margin:.15em .35em .15em 0;font-size:.9em}',
+            '.shiki-full__genres{margin-bottom:.8em}',
+            '.shiki-full__genres span{display:inline-block;color:rgba(255,255,255,.68);margin-right:.65em;font-size:.92em}',
+            '.shiki-full__actions{display:flex;flex-wrap:wrap;align-items:center;margin:.9em 0 1.1em}',
+            '.shiki-full__actions>*{margin:0 .7em .7em 0}',
+            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}',
+            '.shiki-full__actions .full-start__button>svg{margin-right:.5em;flex-shrink:0}',
+            '.shiki-full__descr{margin:.9em 0;line-height:1.55;white-space:pre-line;color:rgba(255,255,255,.86)}',
+            '.shiki-full__alt{color:rgba(255,255,255,.52);font-size:.88em;margin-bottom:1.1em;line-height:1.4;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-section{margin-top:1.4em;width:100%;box-sizing:border-box}',
+            '.shiki-section__title{font-size:1.15em;font-weight:600;margin-bottom:.6em;color:#fff}',
+            '.shiki-shots{display:flex;flex-wrap:wrap}',
+            '.shiki-shots img{width:11em;height:6.2em;max-width:42vw;object-fit:cover;border-radius:.25em;background:rgba(255,255,255,.06);margin:0 .6em .6em 0}',
+            '.shiki-sublist{display:flex;flex-wrap:wrap;width:100%;box-sizing:border-box}',
+            '.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.25em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}',
+            '.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.06)!important;opacity:1}',
+            '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#fff;color:#111;border-color:#fff;outline:none}',
+            '.shiki-subcard.selector--focus .shiki-subcard__sub,.shiki-subcard.focus .shiki-subcard__sub{color:rgba(0,0,0,.62)}',
+            '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.2em;flex-shrink:0;background:rgba(255,255,255,.06)}',
+            '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
+            '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
+            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card__poster{width:6.2em}.shiki-card__poster img{height:9.3em}.shiki-card__body{padding-left:.9em;padding-right:.35em}}',
+            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
+        ].join('')
+        $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
     }
 
     // ---------- Shikimori API (modular multi-host fallback + TTL cache) ----------
@@ -952,15 +1070,23 @@
 
         function buildToolbar() {
             var bar = $('<div class="shiki-toolbar"></div>')
+            var tools = $('<div class="shiki-toolbar__tools"></div>')
             var searchLabel = keyword
                 ? (tr('shikimori_search_btn') + ': ' + keyword)
                 : tr('shikimori_search_btn')
 
-            var searchBtn = $('<div class="shiki-tab selector' + (mode === 'search' ? ' shiki-tab--active' : '') + '">' +
+            var searchBtn = $('<div class="shiki-tab shiki-tab--search selector' + (mode === 'search' ? ' shiki-tab--active' : '') + '">' +
                 SEARCH_SVG + '<span>' + esc(searchLabel) + '</span></div>')
             searchBtn.on('hover:enter', askKeyword)
-            bar.append(searchBtn)
+            tools.append(searchBtn)
 
+            var filterLabel = tr('shikimori_filters') + (hasActiveFilters() ? ' •' : '')
+            var filterBtn = $('<div class="shiki-tab shiki-tab--filter selector"><span>' + esc(filterLabel) + '</span></div>')
+            filterBtn.on('hover:enter', showFilterMenu)
+            tools.append(filterBtn)
+            bar.append(tools)
+
+            var tabsRow = $('<div class="shiki-toolbar__tabs"></div>')
             var tabs = [
                 { id: 'ongoing', label: tr('shikimori_tab_ongoing') },
                 { id: 'popular', label: tr('shikimori_tab_popular') },
@@ -968,20 +1094,16 @@
                 { id: 'anons',   label: tr('shikimori_tab_anons') }
             ]
 
-            var filterLabel = tr('shikimori_filters') + (hasActiveFilters() ? ' •' : '')
-            var filterBtn = $('<div class="shiki-tab selector"><span>' + esc(filterLabel) + '</span></div>')
-            filterBtn.on('hover:enter', showFilterMenu)
-            bar.append(filterBtn)
-
             tabs.forEach(function (t) {
-                var tab = $('<div class="shiki-tab selector' + (mode === t.id ? ' shiki-tab--active' : '') + '">' +
+                var tab = $('<div class="shiki-tab shiki-tab--section selector' + (mode === t.id ? ' shiki-tab--active' : '') + '">' +
                     '<span>' + esc(t.label) + '</span></div>')
                 tab.on('hover:enter', function () {
                     if (mode === t.id && !keyword) return
                     Lampa.Activity.replace({ search: '', mode: t.id, page: 1, filters: filters })
                 })
-                bar.append(tab)
+                tabsRow.append(tab)
             })
+            bar.append(tabsRow)
 
             bindFocusable(bar.find('.selector'))
             if (hasActiveFilters()) bar.append($('<div class="shiki-filter-summary"></div>').text(filterSummary()))
@@ -1041,21 +1163,24 @@
             var epText = formatEpisodes(a)
             var yearText = a.aired_on ? String(a.aired_on).substr(0, 4) : '—'
 
-            var metaParts = [esc(kindTitle(a.kind)), esc(yearText)]
-            if (epText) metaParts.push(esc(epText))
-            metaParts.push('<span class="shiki-card__score">★ ' + esc(scoreText) + '</span>')
+            var metaParts = [
+                '<span class="shiki-card__meta-item shiki-card__kind">' + esc(kindTitle(a.kind)) + '</span>',
+                '<span class="shiki-card__meta-item">' + esc(yearText) + '</span>'
+            ]
+            if (epText) metaParts.push('<span class="shiki-card__meta-item">' + esc(epText) + '</span>')
+            metaParts.push('<span class="shiki-card__meta-item shiki-card__score">★ ' + esc(scoreText) + '</span>')
 
             var item = $(
                 '<div class="shiki-card selector">' +
-                    '<div class="shiki-card__poster"><img src="' + esc(posterOf(a, false)) + '" alt="" loading="lazy"></div>' +
+                    '<div class="shiki-card__poster"><img class="shiki-poster-image" src="' + esc(posterOf(a, false)) + '" alt=""></div>' +
                     '<div class="shiki-card__body">' +
                         '<div class="shiki-card__name">' + esc(primaryName) + '</div>' +
                         (showOrig ? '<div class="shiki-card__orig">' + esc(a.name) + '</div>' : '') +
-                        '<div class="shiki-card__meta">' + metaParts.join(' · ') + '</div>' +
+                        '<div class="shiki-card__meta">' + metaParts.join('') + '</div>' +
                     '</div>' +
                 '</div>'
             )
-            bindImgFallback(item)
+            bindImgFallback(item, a, '.shiki-poster-image', false)
             item.on('hover:enter', function () { pushDetails(a) })
             bindFocusable(item)
             return item
@@ -1251,14 +1376,14 @@
 
                 var card = $(
                     '<div class="shiki-subcard selector">' +
-                        '<img src="' + esc(posterOf(a, false)) + '" alt="" loading="lazy">' +
+                        '<img class="shiki-poster-image" src="' + esc(posterOf(a, false)) + '" alt="">' +
                         '<div class="shiki-subcard__body">' +
                             '<div class="shiki-subcard__title">' + esc(name) + '</div>' +
                             '<div class="shiki-subcard__sub">' + esc(sub) + '</div>' +
                         '</div>' +
                     '</div>'
                 )
-                bindImgFallback(card)
+                bindImgFallback(card, a, '.shiki-poster-image', false)
                 card.on('hover:enter', function () { pushDetails(a) })
                 bindFocusable(card)
                 grid.append(card)
@@ -1376,7 +1501,7 @@
 
             var box = $(
                 '<div class="shiki-full">' +
-                    '<div class="shiki-full__poster"><img class="shiki-full__img" src="' + esc(highPoster) + '" alt=""></div>' +
+                    '<div class="shiki-full__poster"><img class="shiki-full__img shiki-poster-image" src="' + esc(highPoster) + '" alt=""></div>' +
                     '<div class="shiki-full__info">' +
                         '<h1 class="shiki-full__title">' + esc(primaryTitle) + '</h1>' +
                         (showOrig ? '<h2 class="shiki-full__orig">' + esc(a.name) + '</h2>' : '') +
@@ -1392,7 +1517,7 @@
                 '</div>'
             )
 
-            bindImgFallback(box)
+            bindImgFallback(box, a, '.shiki-full__img', true)
             var infoBox = box.find('.shiki-full__info')
 
             if (Array.isArray(a.screenshots) && a.screenshots.length) {
@@ -1808,6 +1933,107 @@
         })
     }
 
+    // ---------- Shikimori ratings on native Lampa cards ----------
+    var shikiRatingQueue = []
+    var shikiRatingBusy = false
+
+    function isJapaneseAnimeCard(data) {
+        if (!data || typeof data !== 'object') return false
+        var language = String(data.original_language || '').toLowerCase()
+        var countries = Array.isArray(data.origin_country) ? data.origin_country : []
+        return language === 'ja' || countries.indexOf('JP') >= 0
+    }
+
+    function lampaCardTitles(data) {
+        return dedupeQueries([data.original_name, data.original_title, data.name, data.title])
+    }
+
+    function findExactShikiAnime(results, titles, year) {
+        if (!Array.isArray(results)) return null
+        var wanted = titles.map(normalize).filter(Boolean)
+        for (var i = 0; i < results.length; i++) {
+            var anime = results[i]
+            if (!anime) continue
+            var names = dedupeQueries([anime.name, anime.russian]).map(normalize)
+            var exact = false
+            for (var n = 0; n < wanted.length && !exact; n++) {
+                if (wanted[n] && names.indexOf(wanted[n]) >= 0) exact = true
+            }
+            if (!exact) continue
+            var animeYear = anime.aired_on ? parseInt(String(anime.aired_on).substr(0, 4), 10) : 0
+            if (year && animeYear && Math.abs(year - animeYear) > 1) continue
+            var score = formatScore(anime.score)
+            if (score) return { score: score, id: anime.id }
+        }
+        return null
+    }
+
+    function attachShikiRating(job, result) {
+        if (!job || !result || !job.item) return
+        var html = job.item.html
+        if (!html || typeof html.find !== 'function') return
+        var view = html.find('.card__view').first()
+        if (!view.length || view.find('.shikimori-card-rating').length) return
+        view.append($('<div class="shikimori-card-rating" title="Shikimori">SHIKI ' + esc(result.score) + '</div>'))
+        try { html.addClass('card--shikimori-rated') } catch (e) {}
+    }
+
+    function processShikiRatingQueue() {
+        if (shikiRatingBusy || !shikiRatingQueue.length) return
+        shikiRatingBusy = true
+        var job = shikiRatingQueue.shift()
+        var key = 'shiki-rating:' + normalize(job.titles[0] || '') + ':' + (job.year || '')
+        var cached = cacheGet(key)
+        if (cached !== undefined) {
+            if (cached && !cached.notFound) attachShikiRating(job, cached)
+            shikiRatingBusy = false
+            setTimeout(processShikiRatingQueue, 120)
+            return
+        }
+        var net = createNetwork(10000)
+        var index = 0
+        function tryTitle() {
+            if (index >= job.titles.length) {
+                cacheSet(key, { notFound: true })
+                net.clear()
+                shikiRatingBusy = false
+                setTimeout(processShikiRatingQueue, 180)
+                return
+            }
+            var title = job.titles[index++]
+            shikiSearch(net, title, 1, function (results) {
+                var found = findExactShikiAnime(results, job.titles, job.year)
+                if (found) {
+                    cacheSet(key, found)
+                    attachShikiRating(job, found)
+                    net.clear()
+                    shikiRatingBusy = false
+                    setTimeout(processShikiRatingQueue, 180)
+                } else tryTitle()
+            }, function () { tryTitle() })
+        }
+        tryTitle()
+    }
+
+    function queueShikiRating(item) {
+        if (!item || !item.data || !isJapaneseAnimeCard(item.data) || item._shikiRatingQueued) return
+        var titles = lampaCardTitles(item.data)
+        if (!titles.length) return
+        item._shikiRatingQueued = true
+        var date = item.data.first_air_date || item.data.release_date || ''
+        var year = date ? parseInt(String(date).substr(0, 4), 10) : 0
+        shikiRatingQueue.push({ item: item, titles: titles, year: year })
+        processShikiRatingQueue()
+    }
+
+    function installLampaCardRatings() {
+        if (!Lampa.Listener || typeof Lampa.Listener.follow !== 'function') return
+        Lampa.Listener.follow('line', function (event) {
+            if (!event || event.type !== 'append' || !Array.isArray(event.items)) return
+            event.items.forEach(function (item) { queueShikiRating(item) })
+        })
+    }
+
     // ---------- initialization ----------
     function init() {
         Lampa.Lang.add(STRINGS)
@@ -1816,6 +2042,7 @@
         Lampa.Component.add('shikimori_full', ShikimoriFullComponent)
         addMenuItem()
         addSettings()
+        installLampaCardRatings()
 
         var shikiManifest = {
             type: 'video',
