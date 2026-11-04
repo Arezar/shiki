@@ -19,7 +19,7 @@
     var UA = 'LampaShikimoriPlugin/1.1'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
-    var CACHE_MAX = 200
+    var CACHE_MAX = 80
     var hostIdx = 0
 
     var ICON_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/><path d="M8 10l1.5 2L8 14M16 10l-1.5 2 1.5 2M12 8v8"/></svg>'
@@ -182,7 +182,6 @@
         var map = {
             anons: tr('shikimori_anons'),
             ongoing: tr('shikimori_ongoing'),
-            latest: tr('shikimori_ongoing'),
             released: tr('shikimori_released_s'),
             cancelled: tr('shikimori_cancelled'),
             paused: tr('shikimori_paused')
@@ -273,10 +272,6 @@
         s = s.replace(/\s*(?::|-|–|—)?\s*(?:the\s+)?(?:final\s+season|(?:\d+(?:st|nd|rd|th)\s+season)|(?:season\s*\d+)|(?:part\s*\d+)|(?:cour\s*\d+)|(?:\d+\s*сезон)|(?:сезон\s*\d+)|(?:часть\s*\d+)|(?:финал))$/i, '')
         // Remove trailing Roman numerals II..VIII when preceded by space
         s = s.replace(/\s+(?:II|III|IV|V|VI|VII|VIII)$/, '')
-        // If still unchanged and has a colon subtitle, take main prefix before ':'
-        if (s === String(title).trim() && s.indexOf(':') > 2) {
-            s = s.split(':')[0]
-        }
         return s.trim()
     }
 
@@ -498,7 +493,8 @@
                 }
                 var foundIdx = HOSTS.indexOf(host)
                 if (foundIdx >= 0) hostIdx = foundIdx
-                cacheSet(cacheKey, res)
+                var isEmptyArray = Array.isArray(res) && res.length === 0
+                if (!isEmptyArray) cacheSet(cacheKey, res)
                 success(res)
             }, function (jqXHR) {
                 if (jqXHR && jqXHR.status === 404) {
@@ -841,7 +837,8 @@
         if (Lampa.Player && Lampa.Player.play) {
             Lampa.Player.play(videoItem)
             if (Lampa.Player.playlist && Array.isArray(allItems) && allItems.length > 1) {
-                Lampa.Player.playlist(allItems)
+                var playlist = allItems.map(function (t) { return { title: t.title, url: t.url } })
+                try { Lampa.Player.playlist(playlist) } catch (e) {}
             }
             return
         }
@@ -868,6 +865,12 @@
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
                 self.activity.loader(active)
+            } else if (Lampa.Loading) {
+                // best-effort fallback if activity loader unavailable (undocumented in some builds)
+                try {
+                    if (active && typeof Lampa.Loading.start === 'function') Lampa.Loading.start()
+                    else if (!active && typeof Lampa.Loading.stop === 'function') Lampa.Loading.stop()
+                } catch (e) {}
             }
         }
 
@@ -886,12 +889,7 @@
         }
 
         function askKeyword() {
-            Lampa.Input.edit({
-                title: tr('shikimori_input_title'),
-                value: keyword,
-                free: true,
-                nosave: true
-            }, function (value) {
+            function onEdit(value) {
                 if (destroyed) return
                 var trimmed = (value || '').trim()
                 if (!trimmed) {
@@ -899,7 +897,25 @@
                     return
                 }
                 Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1 })
-            })
+            }
+            if (Lampa.Input && typeof Lampa.Input.edit === 'function') {
+                Lampa.Input.edit({
+                    title: tr('shikimori_input_title'),
+                    value: keyword,
+                    free: true,
+                    nosave: true
+                }, onEdit)
+            } else if (Lampa.Search && typeof Lampa.Search.show === 'function') {
+                Lampa.Search.show({
+                    title: tr('shikimori_input_title'),
+                    value: keyword,
+                    onSearch: onEdit,
+                    onBack: function () { setupController() }
+                })
+            } else {
+                // fallback: just focus controller if no input method
+                setupController()
+            }
         }
 
         function buildToolbar() {
@@ -988,24 +1004,33 @@
                 loadingMore = false
                 if (destroyed) return
                 var listContainer = scroll.body().find('.shiki-list')
-                listContainer.find('.shiki-more').remove()
 
                 if (!Array.isArray(animes)) {
                     Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
                     Lampa.Controller.collectionSet(scroll.render(true))
+                    if (lastFocused && lastFocused.parentNode) {
+                        try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
+                    }
                     return
                 }
                 if (!animes.length) {
                     hasMore = false
                     Lampa.Controller.collectionSet(scroll.render(true))
+                    if (lastFocused && lastFocused.parentNode) {
+                        try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
+                    }
                     return
                 }
                 page++
                 var firstNew = appendCards(listContainer, animes)
                 Lampa.Controller.collectionSet(scroll.render(true))
+                // collectionSet may reset cursor on some Lampa builds — restore previous focus for auto-scroll
+                if (lastFocused && lastFocused.parentNode) {
+                    try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
+                }
                 if (manualTrigger && firstNew) {
                     lastFocused = firstNew
-                    Lampa.Controller.collectionFocus(firstNew, scroll.render(true))
+                    try { Lampa.Controller.collectionFocus(firstNew, scroll.render(true)) } catch (e) {}
                 }
             }, function () {
                 loadingMore = false
@@ -1103,6 +1128,11 @@
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
                 self.activity.loader(active)
+            } else if (Lampa.Loading) {
+                try {
+                    if (active && typeof Lampa.Loading.start === 'function') Lampa.Loading.start()
+                    else if (!active && typeof Lampa.Loading.stop === 'function') Lampa.Loading.stop()
+                } catch (e) {}
             }
         }
 
@@ -1181,7 +1211,7 @@
                 if (destroyed || !Array.isArray(simList)) return
                 var items = []
                 for (var i = 0; i < simList.length; i++) {
-                    if (simList[i] && simList[i].id) {
+                    if (simList[i] && simList[i].id && simList[i].id !== animeId) {
                         items.push({ anime: simList[i] })
                     }
                 }
@@ -1272,16 +1302,20 @@
                 tmdbBusy = true
                 var tmdbNet = createNetwork(12000)
                 var cancelled = false
-                Lampa.Loading.start(function () {
-                    cancelled = true
-                    tmdbBusy = false
-                    tmdbNet.clear()
-                    Lampa.Loading.stop()
-                    setupController()
-                })
+                try {
+                    Lampa.Loading.start(function () {
+                        cancelled = true
+                        tmdbBusy = false
+                        try { tmdbNet.clear() } catch (e) {}
+                        try { Lampa.Loading.stop() } catch (e) {}
+                        setupController()
+                    })
+                } catch (e) {
+                    try { Lampa.Loading.start() } catch (ee) {}
+                }
                 tmdbForAnime(anime, function (results, confidentSingle) {
                     if (cancelled || destroyed) return
-                    Lampa.Loading.stop()
+                    try { Lampa.Loading.stop() } catch (e) {}
                     tmdbBusy = false
                     openTmdbResults(results, anime.russian || anime.name, confidentSingle)
                 }, tmdbNet)
@@ -1414,30 +1448,36 @@
         var prevCtrl = (Lampa.Controller && Lampa.Controller.enabled) ? Lampa.Controller.enabled().name : 'content'
         var modalNet = createNetwork(12000)
         var cancelled = false
+        var netFails = 0
         var cardDate = card.release_date || card.first_air_date || ''
         var cardYear = cardDate ? parseInt(String(cardDate).substr(0, 4), 10) : 0
 
-        Lampa.Loading.start(function () {
-            cancelled = true
-            modalNet.clear()
-            Lampa.Loading.stop()
-            if (prevCtrl) Lampa.Controller.toggle(prevCtrl)
-        })
+        try {
+            Lampa.Loading.start(function () {
+                cancelled = true
+                modalNet.clear()
+                try { Lampa.Loading.stop() } catch (e) {}
+                if (prevCtrl) try { Lampa.Controller.toggle(prevCtrl) } catch (e) {}
+            })
+        } catch (e) {
+            try { Lampa.Loading.start() } catch (ee) {}
+        }
 
         function tryNext(i) {
             if (cancelled) return
-            if (i >= queries.length) {
-                Lampa.Loading.stop()
+            if (i >= queries.length || netFails >= 2) {
+                try { Lampa.Loading.stop() } catch (e) {}
                 Lampa.Noty.show(tr('shikimori_empty'))
                 return
             }
             shikiSearch(modalNet, queries[i], 1, function (animes) {
                 if (cancelled) return
+                netFails = 0
                 if (!Array.isArray(animes) || !animes.length) {
                     tryNext(i + 1)
                     return
                 }
-                Lampa.Loading.stop()
+                try { Lampa.Loading.stop() } catch (e) {}
 
                 var queryNorms = queries.map(normalize).filter(Boolean)
                 var singleConfident = false
@@ -1482,10 +1522,11 @@
                         pushDetails(item.anime)
                     },
                     onBack: function () {
-                        Lampa.Controller.toggle(prevCtrl || 'content')
+                        try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
                     }
                 })
             }, function () {
+                netFails++
                 if (!cancelled) tryNext(i + 1)
             })
         }
@@ -1530,7 +1571,7 @@
         }
 
         Lampa.Listener.follow('menu', function (e) {
-            if (!e || e.type === 'start' || e.type === 'end') {
+            if (!e || e.type === 'ready') {
                 appendToMenuDom(e && e.body ? e.body : null)
             }
         })
@@ -1584,25 +1625,92 @@
         addMenuItem()
         addSettings()
 
-        // Official plugin registration via push-setter with dynamic getters
-        // (Lampa checks truthiness of plugin.onContextMenu directly without invoking it)
-        var pluginManifest = {
+        var shikiManifest = {
             type: 'video',
-            onContextLauch: function (card) { openShikimoriForCard(card) }
-        }
-        Object.defineProperty(pluginManifest, 'name', {
-            enumerable: true,
-            configurable: true,
-            get: function () { return tr('shikimori_on_shiki') }
-        })
-        Object.defineProperty(pluginManifest, 'onContextMenu', {
-            enumerable: true,
-            configurable: true,
-            get: function () {
-                return Lampa.Storage && Lampa.Storage.field ? Lampa.Storage.field('shikimori_context') !== false : true
+            version: '1.0.0',
+            name: tr('shikimori_on_shiki'),
+            description: '',
+            onContextMenu: function (card) {
+                var enabled = true
+                try {
+                    if (Lampa.Storage && typeof Lampa.Storage.field === 'function') {
+                        enabled = Lampa.Storage.field('shikimori_context') !== false
+                    }
+                } catch (e) { enabled = true }
+                if (!enabled) return false
+                return { name: tr('shikimori_on_shiki'), description: '' }
+            },
+            onContextLauch: function (card) {
+                var enabled = true
+                try {
+                    if (Lampa.Storage && typeof Lampa.Storage.field === 'function') {
+                        enabled = Lampa.Storage.field('shikimori_context') !== false
+                    }
+                } catch (e) { enabled = true }
+                if (!enabled) return
+                openShikimoriForCard(card)
             }
-        })
-        Lampa.Manifest.plugins = pluginManifest
+        }
+        shikiManifest.onContextLaunch = shikiManifest.onContextLauch
+        try {
+            var prevManifest = Lampa.Manifest.plugins
+            if (Array.isArray(prevManifest)) {
+                prevManifest.push(shikiManifest)
+            } else {
+                var shikiDesc = null
+                try { shikiDesc = Object.getOwnPropertyDescriptor(Lampa.Manifest, 'plugins') } catch (e) {}
+                if (shikiDesc && typeof shikiDesc.set === 'function') {
+                    Lampa.Manifest.plugins = shikiManifest
+                } else if (prevManifest && typeof prevManifest === 'object' && (prevManifest.onContextMenu || prevManifest.onContextLauch || prevManifest.onContextLaunch)) {
+                    try {
+                        var shikiTestArray = [prevManifest, shikiManifest]
+                        Lampa.Manifest.plugins = shikiTestArray
+                        if (!Array.isArray(Lampa.Manifest.plugins) || Lampa.Manifest.plugins.length !== 2) throw new Error('array not supported')
+                    } catch (e) {
+                        var shikiMerged = {
+                            type: 'video',
+                            name: shikiManifest.name,
+                            description: shikiManifest.description,
+                            onContextMenu: function (card) {
+                                var prevRes = false
+                                try {
+                                    if (typeof prevManifest.onContextMenu === 'function') prevRes = prevManifest.onContextMenu(card)
+                                    else if (prevManifest.onContextMenu) prevRes = !!prevManifest.onContextMenu
+                                } catch (ee) { prevRes = false }
+                                var ourRes = shikiManifest.onContextMenu(card)
+                                if (ourRes) return ourRes
+                                if (prevRes) {
+                                    if (typeof prevRes === 'object') return prevRes
+                                    return { name: prevManifest.name || '', description: prevManifest.description || '' }
+                                }
+                                return false
+                            },
+                            onContextLauch: function (card, item) {
+                                var ourName = ''
+                                try { ourName = tr('shikimori_on_shiki') } catch (ee) {}
+                                var itemName = item && (item.title || item.name) ? String(item.title || item.name) : ''
+                                if (itemName && itemName === ourName) {
+                                    shikiManifest.onContextLauch(card)
+                                } else if (!itemName) {
+                                    if (shikiManifest.onContextMenu(card)) shikiManifest.onContextLauch(card)
+                                    try { if (typeof prevManifest.onContextLauch === 'function') prevManifest.onContextLauch(card, item) } catch (ee) {}
+                                    try { if (typeof prevManifest.onContextLaunch === 'function') prevManifest.onContextLaunch(card, item) } catch (ee) {}
+                                } else {
+                                    try { if (typeof prevManifest.onContextLauch === 'function') prevManifest.onContextLauch(card, item) } catch (ee) {}
+                                    try { if (typeof prevManifest.onContextLaunch === 'function') prevManifest.onContextLaunch(card, item) } catch (ee) {}
+                                }
+                            }
+                        }
+                        shikiMerged.onContextLaunch = shikiMerged.onContextLauch
+                        Lampa.Manifest.plugins = shikiMerged
+                    }
+                } else {
+                    Lampa.Manifest.plugins = shikiManifest
+                }
+            }
+        } catch (e) {
+            try { Lampa.Manifest.plugins = shikiManifest } catch (ee) {}
+        }
 
         // Optional button inside TMDB full card (with SVG icon + deduplication + anime filter)
         Lampa.Listener.follow('full', function (e) {
