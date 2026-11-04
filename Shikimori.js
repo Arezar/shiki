@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.1'
+    var VERSION = '1.5.2'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -458,16 +458,16 @@
             '.shiki-toolbar .shiki-tab--active{background:rgba(255,255,255,.13);box-shadow:inset 0 -.16em 0 #efbd70;color:#fff}',
             '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}',
+            '.shiki-list{display:flex;flex-flow:row wrap;align-items:stretch;width:100%;max-width:100%;box-sizing:border-box}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
-            '.shiki-card{display:flex;align-items:center;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.1);border-radius:0;margin:0;padding:.8em .55em;cursor:pointer}',
-            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.09);border-bottom-color:transparent;border-radius:.32em;box-shadow:inset 0 0 0 2px rgba(255,255,255,.72);outline:none}',
-            '.shiki-card__poster{flex:0 0 auto;width:6.8em}',
-            '.shiki-card__poster img{display:block;width:100%;height:10.2em;max-width:100%;object-fit:cover;border-radius:.28em;background:rgba(255,255,255,.07)}',
-            '.shiki-card__body{flex:1 1 auto;width:auto;min-width:0;box-sizing:border-box;padding:.25em .45em .25em 1.2em;overflow:visible}',
-            '.shiki-card__name{display:block;max-width:100%;font-size:1.22em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
-            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.32em 0 0;font-size:.88em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-card__meta{display:block;max-width:100%;margin-top:.55em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card{display:flex;flex:0 0 calc(20% - .8em);flex-direction:column;align-items:stretch;min-width:0;max-width:calc(20% - .8em);box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0 .4em .8em;padding:.45em;cursor:pointer}',
+            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
+            '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
+            '.shiki-card__poster img{display:block;width:100%;height:14em;max-width:100%;object-fit:cover;border-radius:.22em;background:rgba(255,255,255,.07)}',
+            '.shiki-card__body{display:block;flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box;padding:.55em .2em .25em;overflow:hidden}',
+            '.shiki-card__name{display:block;max-width:100%;font-size:1.02em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
+            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.25em 0 0;font-size:.78em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card__meta{display:block;max-width:100%;margin-top:.35em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-card__meta-item{display:inline}',
             '.shiki-card__meta-item+.shiki-card__meta-item:before{content:"·";display:inline-block;margin:0 .55em;color:rgba(255,255,255,.38)}',
             '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
@@ -504,8 +504,8 @@
             '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
             '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
-            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card__poster{width:6.2em}.shiki-card__poster img{height:9.3em}.shiki-card__body{padding-left:.9em;padding-right:.35em}}',
-            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
+            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card{flex-basis:calc(25% - .8em);max-width:calc(25% - .8em)}.shiki-card__poster img{height:12em}}',
+            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-card{flex-basis:calc(33.333% - .8em);max-width:calc(33.333% - .8em)}.shiki-card__poster img{height:10em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
         ].join('')
         $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
     }
