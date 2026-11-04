@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.3.0'
+    var VERSION = '1.4.0'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -79,7 +79,7 @@
         shikimori_tab_popular:{ ru: 'Популярное', en: 'Popular', uk: 'Популярне' },
         shikimori_tab_top:    { ru: 'Топ рейтинга', en: 'Top rated', uk: 'Топ рейтингу' },
         shikimori_tab_anons:  { ru: 'Анонсы', en: 'Upcoming', uk: 'Анонси' },
-        shikimori_tmdb:       { ru: 'Найти на TMDB', en: 'Find on TMDB', uk: 'Знайти на TMDB' },
+        shikimori_tmdb:       { ru: 'Открыть в Lampa', en: 'Open in Lampa', uk: 'Відкрити в Lampa' },
         shikimori_trailer:    { ru: 'Трейлер', en: 'Trailer', uk: 'Трейлер' },
         shikimori_no_tmdb:    { ru: 'На TMDB ничего не найдено', en: 'Nothing found on TMDB', uk: 'На TMDB нічого не знайдено' },
         shikimori_empty:      { ru: 'Ничего не найдено', en: 'Nothing found', uk: 'Нічого не знайдено' },
@@ -111,7 +111,18 @@
         shikimori_host_label:   { ru: 'Зеркало Shikimori', en: 'Shikimori mirror', uk: 'Дзеркало Shikimori' },
         shikimori_host_auto:    { ru: 'Автоматически', en: 'Automatic', uk: 'Автоматично' },
         shikimori_adult:         { ru: 'Показывать аниме 18+', en: 'Include adult anime (18+)', uk: 'Показувати аніме 18+' },
-        shikimori_more:         { ru: 'ещё', en: 'more', uk: 'ще' }
+        shikimori_more:         { ru: 'ещё', en: 'more', uk: 'ще' },
+        shikimori_filters:      { ru: 'Фильтры', en: 'Filters', uk: 'Фільтри' },
+        shikimori_filter_kind:  { ru: 'Тип', en: 'Type', uk: 'Тип' },
+        shikimori_filter_status:{ ru: 'Статус', en: 'Status', uk: 'Статус' },
+        shikimori_filter_year:  { ru: 'Год', en: 'Year', uk: 'Рік' },
+        shikimori_filter_score: { ru: 'Минимальная оценка', en: 'Minimum score', uk: 'Мінімальна оцінка' },
+        shikimori_filter_duration:{ ru: 'Длительность', en: 'Duration', uk: 'Тривалість' },
+        shikimori_filter_rating:{ ru: 'Возрастной рейтинг', en: 'Age rating', uk: 'Віковий рейтинг' },
+        shikimori_filter_order: { ru: 'Сортировка', en: 'Sort by', uk: 'Сортування' },
+        shikimori_filter_clear: { ru: 'Сбросить фильтры', en: 'Clear filters', uk: 'Скинути фільтри' },
+        shikimori_filter_any:   { ru: 'Любой', en: 'Any', uk: 'Будь-який' },
+        shikimori_filter_active:{ ru: 'Активно', en: 'Active', uk: 'Активно' }
     }
 
     function lang() {
@@ -378,57 +389,7 @@
     function injectCss() {
         if (cssInjected) return
         cssInjected = true
-        $('head').append('<style id="shikimori-plugin-styles">' +
-            '.shiki-toolbar{display:flex;flex-wrap:wrap;padding:0.5em 0 1em;align-items:center}' +
-            '.shiki-toolbar > *{margin:0 0.5em 0.5em 0}' +
-            '.shiki-tab{display:inline-flex;align-items:center;background:#1b1e27;color:#ddd;border-radius:6px;padding:0.45em 0.9em;font-size:1em;cursor:pointer;transition:background .15s}' +
-            '.shiki-tab > svg{margin-right:0.4em;flex-shrink:0}' +
-            '.shiki-tab--active{background:#2d3a52;color:#fff;border:1px solid #4ea7ff}' +
-            '.shiki-tab.selector--focus,.shiki-tab.focus{background:#4ea7ff;color:#fff;outline:none}' +
-            '.shiki-card{display:flex;background:#1b1e27;border-radius:8px;margin-bottom:0.6em;padding:0.6em;cursor:pointer}' +
-            '.shiki-card.selector--focus,.shiki-card.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
-            '.shiki-card__poster{flex-shrink:0}' +
-            '.shiki-card__poster img{width:6em;height:8.8em;object-fit:cover;border-radius:5px;display:block;background:#24262f}' +
-            '.shiki-card__body{padding:0.3em 1em;flex:1;min-width:0}' +
-            '.shiki-card__name{font-size:1.25em;font-weight:bold;line-height:1.3}' +
-            '.shiki-card__orig{color:#8c93a4;margin:0.2em 0;font-size:0.95em}' +
-            '.shiki-card__meta{color:#aeb4c4;font-size:0.92em;margin-top:0.35em}' +
-            '.shiki-card__score{color:#ffa100;font-weight:bold}' +
-            '.shiki-empty{padding:2.5em 1em;text-align:center;color:#9aa0b0;font-size:1.1em}' +
-            '.shiki-more,.shiki-retry{background:#1b1e27;color:#4ea7ff;padding:0.85em 1.2em;text-align:center;border-radius:8px;margin:0.6em 0 1.2em;cursor:pointer;font-weight:bold}' +
-            '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#4ea7ff;color:#fff}' +
-            '.shiki-full{display:flex;padding:1em 0.5em 2em;align-items:flex-start}' +
-            '.shiki-full__poster{flex-shrink:0;margin-right:1.5em}' +
-            '.shiki-full__img{width:14em;height:20em;object-fit:cover;border-radius:8px;display:block;background:#24262f;box-shadow:0 6px 20px rgba(0,0,0,.35)}' +
-            '.shiki-full__info{flex:1;min-width:0;max-width:62em}' +
-            '.shiki-full__title{font-size:1.85em;margin:0 0 0.15em;line-height:1.2}' +
-            '.shiki-full__orig{font-size:1.1em;color:#8c93a4;margin:0 0 0.7em;font-weight:normal}' +
-            '.shiki-full__facts{margin-bottom:0.6em}' +
-            '.shiki-full__facts span{display:inline-block;background:#2a2f3d;border-radius:5px;padding:0.2em 0.6em;margin:0.15em 0.35em 0.15em 0;font-size:0.92em}' +
-            '.shiki-full__genres{margin-bottom:0.8em}' +
-            '.shiki-full__genres span{display:inline-block;color:#4ea7ff;margin-right:0.65em;font-size:0.95em}' +
-            '.shiki-full__actions{display:flex;flex-wrap:wrap;margin:0.9em 0 1.1em}' +
-            '.shiki-full__actions > *{margin:0 0.7em 0.7em 0}' +
-            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}' +
-            '.shiki-full__actions .full-start__button > svg{margin-right:0.5em;flex-shrink:0}' +
-            '.shiki-full__descr{margin:0.9em 0;line-height:1.55;white-space:pre-line;color:#e6e8ee}' +
-            '.shiki-full__alt{color:#8c93a4;font-size:0.9em;margin-bottom:1.1em;line-height:1.4}' +
-            '.shiki-section{margin-top:1.4em}' +
-            '.shiki-section__title{font-size:1.2em;font-weight:bold;margin-bottom:0.6em;color:#fff}' +
-            '.shiki-shots{display:flex;flex-wrap:wrap}' +
-            '.shiki-shots img{width:11em;height:6.2em;object-fit:cover;border-radius:6px;background:#24262f;margin:0 0.6em 0.6em 0}' +
-            '.shiki-sublist{display:flex;flex-wrap:wrap}' +
-            '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
-            '.shiki-subcard > img{margin-right:0.65em;flex-shrink:0}' +
-            '.shiki-subcard--more{cursor:pointer;background:#1b1e27 !important;opacity:0.9}' +
-            '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
-            '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:4px;flex-shrink:0;background:#24262f}' +
-            '.shiki-subcard__body{min-width:0;flex:1}' +
-            '.shiki-subcard__title{font-size:0.95em;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-            '.shiki-subcard__sub{font-size:0.82em;color:#9aa0b0;margin-top:0.15em}' +
-            '@media (max-width:768px){.shiki-full{flex-direction:column;align-items:center}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}}' +
-            '.shiki-local-loading{opacity:0.6;pointer-events:none}' +
-            '</style>')
+        $('head').append('<style id="shikimori-plugin-styles">' + ".shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:1.1em;padding-right:1.1em}.shiki-toolbar{display:flex;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box;padding:.5em 0 1.15em}.shiki-toolbar>*{margin:0 .55em .55em 0;max-width:100%;box-sizing:border-box}.shiki-tab{display:inline-flex;align-items:center;justify-content:center;min-height:2.7em;max-width:100%;box-sizing:border-box;padding:.55em 1em;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.08);border-radius:.35em;font-size:1em;cursor:pointer}.shiki-tab>svg{margin-right:.45em;flex-shrink:0}.shiki-tab--active{background:rgba(255,255,255,.13);color:#fff;border-color:rgba(255,255,255,.32)}.shiki-tab.selector--focus,.shiki-tab.focus{background:rgba(255,255,255,.2);border-color:#fff;color:#fff;outline:2px solid rgba(255,255,255,.65)}.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}.shiki-card{display:flex;align-items:center;width:100%;min-height:9em;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.45em;margin:0 0 .65em;padding:.65em;cursor:pointer}.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.5);outline-offset:-2px}.shiki-card__poster{flex:0 0 auto}.shiki-card__poster img{width:7em;height:10.2em;max-width:22vw;object-fit:cover;border-radius:.25em;display:block;background:rgba(255,255,255,.08)}.shiki-card__body{padding:.35em 1em;flex:1;min-width:0;overflow:hidden}.shiki-card__name{font-size:1.22em;font-weight:600;line-height:1.3;white-space:normal;overflow-wrap:break-word}.shiki-card__orig{color:rgba(255,255,255,.58);margin:.25em 0;font-size:.92em;white-space:normal}.shiki-card__meta{color:rgba(255,255,255,.7);font-size:.9em;margin-top:.45em;line-height:1.45}.shiki-card__score{color:#ffc36a;font-weight:bold;white-space:nowrap}.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.68);font-size:1.05em}.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.06);color:rgba(255,255,255,.9);padding:.9em 1.2em;text-align:center;border:1px solid rgba(255,255,255,.1);border-radius:.4em;margin:.65em 0 1.2em;cursor:pointer;font-weight:600}.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:rgba(255,255,255,.18);border-color:#fff;color:#fff}.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}.shiki-full__img{width:14em;height:20em;max-width:30vw;object-fit:cover;border-radius:.4em;display:block;background:rgba(255,255,255,.08)}.shiki-full__info{flex:1;min-width:0;max-width:none}.shiki-full__title{font-size:1.8em;margin:0 0 .15em;line-height:1.2;overflow-wrap:break-word}.shiki-full__orig{font-size:1.05em;color:rgba(255,255,255,.58);margin:0 0 .7em;font-weight:normal}.shiki-full__facts{margin-bottom:.6em;line-height:1.7}.shiki-full__facts span{display:inline-block;background:rgba(255,255,255,.08);border-radius:.25em;padding:.2em .55em;margin:.15em .35em .15em 0;font-size:.9em}.shiki-full__genres{margin-bottom:.8em}.shiki-full__genres span{display:inline-block;color:rgba(255,255,255,.7);margin-right:.65em;font-size:.92em}.shiki-full__actions{display:flex;flex-wrap:wrap;align-items:center;margin:.9em 0 1.1em}.shiki-full__actions>*{margin:0 .7em .7em 0}.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}.shiki-full__actions .full-start__button>svg{margin-right:.5em;flex-shrink:0}.shiki-full__descr{margin:.9em 0;line-height:1.55;white-space:pre-line;color:rgba(255,255,255,.88)}.shiki-full__alt{color:rgba(255,255,255,.55);font-size:.88em;margin-bottom:1.1em;line-height:1.4;overflow-wrap:break-word}.shiki-section{margin-top:1.4em;width:100%;box-sizing:border-box}.shiki-section__title{font-size:1.15em;font-weight:600;margin-bottom:.6em;color:#fff}.shiki-shots{display:flex;flex-wrap:wrap}.shiki-shots img{width:11em;height:6.2em;max-width:42vw;object-fit:cover;border-radius:.3em;background:rgba(255,255,255,.08);margin:0 .6em .6em 0}.shiki-sublist{display:flex;flex-wrap:wrap;width:100%;box-sizing:border-box}.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:.35em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.07)!important;opacity:1}.shiki-subcard.selector--focus,.shiki-subcard.focus{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.65);outline:2px solid rgba(255,255,255,.45);outline-offset:-2px}.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.25em;flex-shrink:0;background:rgba(255,255,255,.08)}.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.58);margin-top:.15em;white-space:normal}.shiki-filter-summary{flex:1 0 100%;padding:.15em .2em .45em;color:rgba(255,255,255,.62);font-size:.82em;line-height:1.4;white-space:normal;overflow-wrap:break-word}.shiki-local-loading{opacity:.6;pointer-events:none}@media (max-width:900px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.5em;padding-right:.5em}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}" + '</style>')
     }
 
     // ---------- Shikimori API (modular multi-host fallback + TTL cache) ----------
@@ -537,7 +498,7 @@
         tryCandidate(0)
     }
 
-    function shikiCatalog(net, mode, keyword, page, success, failure) {
+    function shikiCatalog(net, mode, keyword, page, success, failure, filters) {
         var p = page || 1
         var allowAdult = false
         try {
@@ -545,17 +506,21 @@
         } catch (e) {}
         var base = '?limit=' + PAGE + '&page=' + p + '&censored=' + (allowAdult ? 'false' : 'true')
         var query
-        if (mode === 'search' && keyword) {
-            query = base + '&search=' + encodeURIComponent(keyword)
-        } else if (mode === 'popular') {
-            query = base + '&order=popularity'
-        } else if (mode === 'top') {
-            query = base + '&order=ranked'
-        } else if (mode === 'anons') {
-            query = base + '&status=anons&order=popularity'
-        } else {
-            query = base + '&status=ongoing&order=popularity'
+        if (mode === 'search' && keyword) query = base + '&search=' + encodeURIComponent(keyword)
+        else query = base
+        var order = mode === 'top' ? 'ranked' : 'popularity'
+        if (mode === 'anons') query += '&status=anons'
+        else if (mode === 'ongoing') query += '&status=ongoing'
+        if (filters && typeof filters === 'object') {
+            if (filters.kind) query += '&kind=' + encodeURIComponent(filters.kind)
+            if (filters.status) { query = query.replace(/&status=[^&]*/g, ''); query += '&status=' + encodeURIComponent(filters.status) }
+            if (filters.season) query += '&season=' + encodeURIComponent(filters.season)
+            if (filters.score) query += '&score=' + encodeURIComponent(filters.score)
+            if (filters.duration) query += '&duration=' + encodeURIComponent(filters.duration)
+            if (filters.rating) query += '&rating=' + encodeURIComponent(filters.rating)
+            if (filters.order) order = filters.order
         }
+        query += '&order=' + encodeURIComponent(order)
         shikiRequest(net, query, success, failure, { expectArray: true })
     }
 
@@ -801,9 +766,26 @@
         })
     }
 
+    function openNativeTmdbSearch(title) {
+        var query = String(title || '').trim()
+        if (!query) {
+            Lampa.Noty.show(tr('shikimori_no_tmdb'))
+            return
+        }
+        // Use Lampa's own TMDB source as a fallback: it respects the app's
+        // configured TMDB proxy and native network handling.
+        Lampa.Activity.push({
+            url: 'search/multi?query=' + encodeURIComponent(query),
+            title: query,
+            component: 'category_full',
+            source: 'tmdb',
+            page: 1
+        })
+    }
+
     function openTmdbResults(results, fallbackTitle, allowAutoOpen) {
         if (!Array.isArray(results) || !results.length) {
-            Lampa.Noty.show(tr('shikimori_no_tmdb'))
+            openNativeTmdbSearch(fallbackTitle)
             return
         }
         if (results.length === 1 && allowAutoOpen) {
@@ -837,10 +819,12 @@
                     }
                 })
             } else {
-                Lampa.Noty.show(tr('shikimori_no_tmdb'))
+                openNativeTmdbSearch(fallbackTitle)
             }
         } catch (e) {
-            try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (ee) {}
+            try { openNativeTmdbSearch(fallbackTitle) } catch (ee) {
+                try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (eee) {}
+            }
         }
     }
 
@@ -900,7 +884,7 @@
         var self = this
         var html = $('<div class="shiki-search-wrap"></div>')
         var net = createNetwork(12000)
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, end_ratio: 2 })
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, end_ratio: 1 })
         var page = 1
         var hasMore = false
         var loadingMore = false
@@ -909,6 +893,7 @@
 
         var keyword = (object && object.search) ? String(object.search).trim() : ''
         var mode = (object && object.mode) ? object.mode : (keyword ? 'search' : 'ongoing')
+        var filters = (object && object.filters && typeof object.filters === 'object') ? object.filters : {}
 
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
@@ -943,7 +928,7 @@
                     setupController()
                     return
                 }
-                Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1 })
+                Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1, filters: filters })
             }
             if (Lampa.Input && typeof Lampa.Input.edit === 'function') {
                 Lampa.Input.edit({
@@ -983,18 +968,70 @@
                 { id: 'anons',   label: tr('shikimori_tab_anons') }
             ]
 
+            var filterLabel = tr('shikimori_filters') + (hasActiveFilters() ? ' •' : '')
+            var filterBtn = $('<div class="shiki-tab selector"><span>' + esc(filterLabel) + '</span></div>')
+            filterBtn.on('hover:enter', showFilterMenu)
+            bar.append(filterBtn)
+
             tabs.forEach(function (t) {
                 var tab = $('<div class="shiki-tab selector' + (mode === t.id ? ' shiki-tab--active' : '') + '">' +
                     '<span>' + esc(t.label) + '</span></div>')
                 tab.on('hover:enter', function () {
                     if (mode === t.id && !keyword) return
-                    Lampa.Activity.replace({ search: '', mode: t.id, page: 1 })
+                    Lampa.Activity.replace({ search: '', mode: t.id, page: 1, filters: filters })
                 })
                 bar.append(tab)
             })
 
             bindFocusable(bar.find('.selector'))
+            if (hasActiveFilters()) bar.append($('<div class="shiki-filter-summary"></div>').text(filterSummary()))
             return bar
+        }
+
+        function hasActiveFilters() {
+            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.order)
+        }
+        function filterSummary() {
+            var parts = []
+            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + filters.kind.toUpperCase())
+            if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
+            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + filters.season)
+            if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
+            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + filters.duration)
+            if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
+            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + filters.order)
+            return parts.join('  ·  ')
+        }
+        function replaceFilters(next) {
+            filters = next
+            Lampa.Activity.replace({ search: keyword, mode: mode, page: 1, filters: filters })
+        }
+        function showFilterMenu() {
+            if (!Lampa.Select || typeof Lampa.Select.show !== 'function') { Lampa.Noty.show(tr('shikimori_filters')); return }
+            var entries = [
+                { key: 'kind', title: tr('shikimori_filter_kind'), values: [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special']] },
+                { key: 'status', title: tr('shikimori_filter_status'), values: [['', tr('shikimori_filter_any')], ['anons', tr('shikimori_anons')], ['ongoing', tr('shikimori_ongoing')], ['released', tr('shikimori_released_s')]] },
+                { key: 'season', title: tr('shikimori_filter_year'), values: (function () { var years = [['', tr('shikimori_filter_any')]]; for (var y = new Date().getFullYear(); y >= 1980; y--) years.push([String(y), String(y)]); return years })() },
+                { key: 'score', title: tr('shikimori_filter_score'), values: [['', tr('shikimori_filter_any')], ['5', '5+'], ['6', '6+'], ['7', '7+'], ['8', '8+'], ['9', '9+']] },
+                { key: 'duration', title: tr('shikimori_filter_duration'), values: [['', tr('shikimori_filter_any')], ['S', '< 10 ' + tr('shikimori_minutes')], ['D', '< 30 ' + tr('shikimori_minutes')], ['F', '30+ ' + tr('shikimori_minutes')]] },
+                { key: 'rating', title: tr('shikimori_filter_rating'), values: [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+'], ['rx', 'Rx']] },
+                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['aired_on', tr('shikimori_filter_year')], ['name', 'A–Z']] }
+            ]
+            var items = entries.map(function (entry) { return { title: entry.title + (filters[entry.key] ? ' · ' + filters[entry.key] : ''), subtitle: filters[entry.key] ? tr('shikimori_filter_active') : '', filterKey: entry.key } })
+            items.push({ title: tr('shikimori_filter_clear'), filterKey: '__clear' })
+            Lampa.Select.show({ title: tr('shikimori_filters'), items: items, onSelect: function (item) {
+                try { Lampa.Select.close() } catch (e) {}
+                if (item.filterKey === '__clear') { replaceFilters({}); return }
+                var entry = null
+                for (var i = 0; i < entries.length; i++) if (entries[i].key === item.filterKey) entry = entries[i]
+                if (!entry) return
+                Lampa.Select.show({ title: entry.title, items: entry.values.map(function (pair) { return { title: pair[1], subtitle: filters[entry.key] === pair[0] && pair[0] ? tr('shikimori_filter_active') : '', value: pair[0] } }), onSelect: function (choice) {
+                    try { Lampa.Select.close() } catch (e) {}
+                    var next = {}; for (var k in filters) if (Object.prototype.hasOwnProperty.call(filters, k)) next[k] = filters[k]
+                    if (choice.value) next[entry.key] = choice.value; else delete next[entry.key]
+                    replaceFilters(next)
+                }, onBack: showFilterMenu })
+            }, onBack: setupController })
         }
 
         function createCardElement(a) {
@@ -1083,7 +1120,7 @@
                 loadingMore = false
                 if (destroyed) return
                 Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
-            })
+            }, filters)
         }
 
         function drawInitial(animes, isError) {
@@ -1124,14 +1161,11 @@
                 setLoader(false)
                 Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
                 drawInitial([], true)
-            })
+            }, filters)
         }
 
         this.create = function () {
             scroll.minus()
-            scroll.onWheel = function (step) {
-                if (typeof Navigator !== 'undefined') Navigator.move(step > 0 ? 'down' : 'up')
-            }
             scroll.onEnd = function () {
                 loadMore(false)
             }
@@ -1249,10 +1283,6 @@
             }
 
             slot.empty().append(sec)
-            if (scroll && typeof scroll.update === 'function') {
-                try { scroll.update(scroll.render(true), false) } catch (e) {}
-            }
-
             var shikiCanAppend = false
             try {
                 if (Lampa.Controller && Lampa.Controller.enabled) {
@@ -1481,9 +1511,6 @@
 
         this.create = function () {
             scroll.minus()
-            scroll.onWheel = function (step) {
-                if (typeof Navigator !== 'undefined') Navigator.move(step > 0 ? 'down' : 'up')
-            }
             html.append(scroll.render())
             return html
         }
