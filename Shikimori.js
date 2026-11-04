@@ -16,7 +16,8 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var UA = 'LampaShikimoriPlugin/1.1'
+    var UA = 'LampaShikimoriPlugin/1.2'
+    var VERSION = '1.2.0'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -253,7 +254,15 @@
 
     function bindImgFallback(container) {
         container.find('img').on('error', function () {
-            if (this.src !== PLACEHOLDER) this.src = PLACEHOLDER
+            try {
+                if (this.dataset && this.dataset.shikiFallback) return
+                if (this.dataset) this.dataset.shikiFallback = '1'
+                else this._shikiFallback = 1
+            } catch (e) {
+                if (this._shikiFallback) return
+                this._shikiFallback = 1
+            }
+            this.src = PLACEHOLDER
         })
     }
 
@@ -369,7 +378,8 @@
         if (cssInjected) return
         cssInjected = true
         $('head').append('<style id="shikimori-plugin-styles">' +
-            '.shiki-toolbar{display:flex;flex-wrap:wrap;gap:0.5em;padding:0.5em 0 1em;align-items:center}' +
+            '.shiki-toolbar{display:flex;flex-wrap:wrap;padding:0.5em 0 1em;align-items:center}' +
+            '.shiki-toolbar > *{margin:0 0.5em 0.5em 0}' +
             '.shiki-tab{display:inline-flex;align-items:center;gap:0.4em;background:#1b1e27;color:#ddd;border-radius:6px;padding:0.45em 0.9em;font-size:1em;cursor:pointer;transition:background .15s}' +
             '.shiki-tab--active{background:#2d3a52;color:#fff;border:1px solid #4ea7ff}' +
             '.shiki-tab.selector--focus,.shiki-tab.focus{background:#4ea7ff;color:#fff;outline:none}' +
@@ -385,8 +395,8 @@
             '.shiki-empty{padding:2.5em 1em;text-align:center;color:#9aa0b0;font-size:1.1em}' +
             '.shiki-more,.shiki-retry{background:#1b1e27;color:#4ea7ff;padding:0.85em 1.2em;text-align:center;border-radius:8px;margin:0.6em 0 1.2em;cursor:pointer;font-weight:bold}' +
             '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#4ea7ff;color:#fff}' +
-            '.shiki-full{display:flex;padding:1em 0.5em 2em;gap:1.5em;align-items:flex-start}' +
-            '.shiki-full__poster{flex-shrink:0}' +
+            '.shiki-full{display:flex;padding:1em 0.5em 2em;align-items:flex-start}' +
+            '.shiki-full__poster{flex-shrink:0;margin-right:1.5em}' +
             '.shiki-full__img{width:14em;height:20em;object-fit:cover;border-radius:8px;display:block;background:#24262f;box-shadow:0 6px 20px rgba(0,0,0,.35)}' +
             '.shiki-full__info{flex:1;min-width:0;max-width:62em}' +
             '.shiki-full__title{font-size:1.85em;margin:0 0 0.15em;line-height:1.2}' +
@@ -395,22 +405,24 @@
             '.shiki-full__facts span{display:inline-block;background:#2a2f3d;border-radius:5px;padding:0.2em 0.6em;margin:0.15em 0.35em 0.15em 0;font-size:0.92em}' +
             '.shiki-full__genres{margin-bottom:0.8em}' +
             '.shiki-full__genres span{display:inline-block;color:#4ea7ff;margin-right:0.65em;font-size:0.95em}' +
-            '.shiki-full__actions{display:flex;flex-wrap:wrap;gap:0.7em;margin:0.9em 0 1.1em}' +
+            '.shiki-full__actions{display:flex;flex-wrap:wrap;margin:0.9em 0 1.1em}' +
+            '.shiki-full__actions > *{margin:0 0.7em 0.7em 0}' +
             '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center;gap:0.5em}' +
             '.shiki-full__descr{margin:0.9em 0;line-height:1.55;white-space:pre-line;color:#e6e8ee}' +
             '.shiki-full__alt{color:#8c93a4;font-size:0.9em;margin-bottom:1.1em;line-height:1.4}' +
             '.shiki-section{margin-top:1.4em}' +
             '.shiki-section__title{font-size:1.2em;font-weight:bold;margin-bottom:0.6em;color:#fff}' +
-            '.shiki-shots{display:flex;flex-wrap:wrap;gap:0.6em}' +
-            '.shiki-shots img{width:11em;height:6.2em;object-fit:cover;border-radius:6px;background:#24262f}' +
-            '.shiki-sublist{display:grid;grid-template-columns:repeat(auto-fill,minmax(16em,1fr));gap:0.6em}' +
-            '.shiki-subcard{display:flex;gap:0.65em;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer}' +
+            '.shiki-shots{display:flex;flex-wrap:wrap}' +
+            '.shiki-shots img{width:11em;height:6.2em;object-fit:cover;border-radius:6px;background:#24262f;margin:0 0.6em 0.6em 0}' +
+            '.shiki-sublist{display:flex;flex-wrap:wrap}' +
+            '.shiki-subcard{flex:0 0 calc(50% - 0.6em);display:flex;gap:0.65em;background:#1b1e27;border-radius:7px;padding:0.45em;align-items:center;cursor:pointer;margin:0 0.6em 0.6em 0}' +
             '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#2a2f3d;outline:2px solid #4ea7ff;outline-offset:-2px}' +
             '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:4px;flex-shrink:0;background:#24262f}' +
             '.shiki-subcard__body{min-width:0;flex:1}' +
             '.shiki-subcard__title{font-size:0.95em;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
             '.shiki-subcard__sub{font-size:0.82em;color:#9aa0b0;margin-top:0.15em}' +
             '@media (max-width:768px){.shiki-full{flex-direction:column;align-items:center}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}}' +
+            '.shiki-local-loading{opacity:0.6;pointer-events:none}' +
             '</style>')
     }
 
@@ -831,19 +843,19 @@
         if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('android') &&
             Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('player_launch_trailers') === 'youtube' &&
             Lampa.Android && Lampa.Android.openYoutube) {
-            Lampa.Android.openYoutube(videoItem.id)
-            return
+            try { Lampa.Android.openYoutube(videoItem.id); return } catch (e) {}
         }
-        if (Lampa.Player && Lampa.Player.play) {
-            Lampa.Player.play(videoItem)
-            if (Lampa.Player.playlist && Array.isArray(allItems) && allItems.length > 1) {
-                var playlist = allItems.map(function (t) { return { title: t.title, url: t.url } })
-                try { Lampa.Player.playlist(playlist) } catch (e) {}
-            }
-            return
+        if (typeof YT !== 'undefined' && Lampa.YouTube && typeof Lampa.YouTube.play === 'function') {
+            try { Lampa.YouTube.play(videoItem.id); return } catch (e) {}
         }
-        if (typeof YT !== 'undefined' && Lampa.YouTube && Lampa.YouTube.play) {
-            Lampa.YouTube.play(videoItem.id)
+        if (Lampa.Player && typeof Lampa.Player.play === 'function') {
+            try {
+                Lampa.Player.play({ title: videoItem.title, url: videoItem.url })
+                if (Lampa.Player.playlist && Array.isArray(allItems) && allItems.length > 1) {
+                    var playlist = allItems.map(function (t) { return { title: t.title, url: t.url } })
+                    try { Lampa.Player.playlist(playlist) } catch (ee) {}
+                }
+            } catch (e) {}
         }
     }
 
@@ -865,20 +877,19 @@
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
                 self.activity.loader(active)
-            } else if (Lampa.Loading) {
-                // best-effort fallback if activity loader unavailable (undocumented in some builds)
-                try {
-                    if (active && typeof Lampa.Loading.start === 'function') Lampa.Loading.start()
-                    else if (!active && typeof Lampa.Loading.stop === 'function') Lampa.Loading.stop()
-                } catch (e) {}
+                return
             }
+            try {
+                if (active) html.addClass('shiki-local-loading')
+                else html.removeClass('shiki-local-loading')
+            } catch (e) {}
         }
 
         function bindFocusable(elements) {
-            elements.on('hover:focus', function () {
+            elements.on('hover:focus mouseenter', function () {
                 lastFocused = this
                 scroll.update(this, false)
-            }).on('hover:hover hover:touch', function () {
+            }).on('hover:hover hover:touch mouseenter', function () {
                 lastFocused = this
             })
         }
@@ -1128,19 +1139,19 @@
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
                 self.activity.loader(active)
-            } else if (Lampa.Loading) {
-                try {
-                    if (active && typeof Lampa.Loading.start === 'function') Lampa.Loading.start()
-                    else if (!active && typeof Lampa.Loading.stop === 'function') Lampa.Loading.stop()
-                } catch (e) {}
+                return
             }
+            try {
+                if (active) html.addClass('shiki-local-loading')
+                else html.removeClass('shiki-local-loading')
+            } catch (e) {}
         }
 
         function bindFocusable(elements) {
-            elements.on('hover:focus', function () {
+            elements.on('hover:focus mouseenter', function () {
                 lastFocused = this
                 scroll.update(this, false)
-            }).on('hover:hover hover:touch', function () {
+            }).on('hover:hover hover:touch mouseenter', function () {
                 lastFocused = this
             })
         }
@@ -1178,11 +1189,24 @@
                 bindFocusable(card)
                 grid.append(card)
             })
+            if (entries.length > 12) {
+                grid.append('<div class="shiki-subcard shiki-subcard--more"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc('ещё ') + (entries.length - 12) + '</div></div></div>')
+            }
 
             slot.empty().append(sec)
+            if (scroll && typeof scroll.update === 'function') {
+                try { scroll.update() } catch (e) {}
+            }
 
-            if (Lampa.Controller && Lampa.Controller.enabled && Lampa.Controller.enabled().name === 'content') {
-                Lampa.Controller.collectionAppend(sec.find('.selector'))
+            var shikiCanAppend = false
+            try {
+                if (Lampa.Controller && Lampa.Controller.enabled) {
+                    var shikiEn = Lampa.Controller.enabled()
+                    shikiCanAppend = shikiEn && typeof shikiEn === 'object' && shikiEn.name === 'content'
+                }
+            } catch (e) {}
+            if (shikiCanAppend) {
+                try { Lampa.Controller.collectionAppend(sec.find('.selector')) } catch (e) {}
             }
         }
 
@@ -1226,8 +1250,8 @@
             scroll.reset()
 
             var highPoster = posterOf(a, true)
-            if (Lampa.Background && typeof Lampa.Background.immediately === 'function' && a.image) {
-                Lampa.Background.immediately(highPoster)
+            if (highPoster !== PLACEHOLDER && Lampa.Background && typeof Lampa.Background.immediately === 'function') {
+                try { Lampa.Background.immediately(highPoster) } catch (e) {}
             }
 
             var facts = []
@@ -1445,7 +1469,13 @@
             return
         }
 
-        var prevCtrl = (Lampa.Controller && Lampa.Controller.enabled) ? Lampa.Controller.enabled().name : 'content'
+        var prevCtrl = 'content'
+        try {
+            if (Lampa.Controller && Lampa.Controller.enabled) {
+                var shikiEnPrev = Lampa.Controller.enabled()
+                if (shikiEnPrev && typeof shikiEnPrev === 'object' && shikiEnPrev.name) prevCtrl = shikiEnPrev.name
+            }
+        } catch (e) {}
         var modalNet = createNetwork(12000)
         var cancelled = false
         var netFails = 0
@@ -1477,6 +1507,18 @@
                     tryNext(i + 1)
                     return
                 }
+                var shikiCurCtrl = null
+                try {
+                    if (Lampa.Controller && Lampa.Controller.enabled) {
+                        var shikiEnCur = Lampa.Controller.enabled()
+                        shikiCurCtrl = (shikiEnCur && typeof shikiEnCur === 'object') ? shikiEnCur.name : null
+                    }
+                } catch (e) {}
+                if (shikiCurCtrl && prevCtrl && shikiCurCtrl !== prevCtrl) {
+                    cancelled = true
+                    try { Lampa.Loading.stop() } catch (e) {}
+                    return
+                }
                 try { Lampa.Loading.stop() } catch (e) {}
 
                 var queryNorms = queries.map(normalize).filter(Boolean)
@@ -1493,7 +1535,7 @@
                     }
                 }
 
-                if (animes.length === 1 && singleConfident) {
+                if (animes.length === 1 && singleConfident && animes[0] && animes[0].id) {
                     pushDetails(animes[0])
                     return
                 }
@@ -1547,10 +1589,23 @@
     }
 
     function addMenuItem() {
+        var useNativeAdd = Lampa.Menu && typeof Lampa.Menu.addButton === 'function'
+
+        function menuHasOurs() {
+            if ($('.menu .shikimori-menu-item').length) return true
+            var found = false
+            try {
+                $('.menu .menu__text').each(function () {
+                    if ($(this).text() === tr('shikimori')) { found = true; return false }
+                })
+            } catch (e) {}
+            return found
+        }
+
         function appendToMenuDom(root) {
             var scope = root || $('.menu')
             var list = scope.find('.menu__list').eq(0)
-            if (!list.length || list.find('.shikimori-menu-item').length) return
+            if (!list.length || menuHasOurs()) return
             var btn = $(
                 '<li class="menu__item selector shikimori-menu-item">' +
                     '<div class="menu__ico">' + ICON_SVG + '</div>' +
@@ -1561,20 +1616,21 @@
             list.append(btn)
         }
 
-        if (Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
-            if (!$('.menu .shikimori-menu-item').length) {
-                var added = Lampa.Menu.addButton(ICON_SVG, tr('shikimori'), openMainActivity)
-                if (added && added.addClass) added.addClass('shikimori-menu-item')
+        if (useNativeAdd) {
+            if (!menuHasOurs()) {
+                try { Lampa.Menu.addButton(ICON_SVG, tr('shikimori'), openMainActivity) } catch (e) {}
             }
+            Lampa.Listener.follow('menu', function (e) {
+                if (!e || e.type === 'ready') {
+                    appendToMenuDom(e && e.body ? e.body : null)
+                }
+            })
         } else {
             appendToMenuDom()
+            Lampa.Listener.follow('menu', function (e) {
+                if (!e || e.type === 'ready') appendToMenuDom(e && e.body ? e.body : null)
+            })
         }
-
-        Lampa.Listener.follow('menu', function (e) {
-            if (!e || e.type === 'ready') {
-                appendToMenuDom(e && e.body ? e.body : null)
-            }
-        })
     }
 
     // ---------- settings ----------
@@ -1627,7 +1683,7 @@
 
         var shikiManifest = {
             type: 'video',
-            version: '1.0.0',
+            version: VERSION,
             name: tr('shikimori_on_shiki'),
             description: '',
             onContextMenu: function (card) {
@@ -1638,7 +1694,7 @@
                     }
                 } catch (e) { enabled = true }
                 if (!enabled) return false
-                return { name: tr('shikimori_on_shiki'), description: '' }
+                return { title: tr('shikimori_on_shiki') }
             },
             onContextLauch: function (card) {
                 var enabled = true
@@ -1654,7 +1710,20 @@
         shikiManifest.onContextLaunch = shikiManifest.onContextLauch
         try {
             var prevManifest = Lampa.Manifest.plugins
-            if (Array.isArray(prevManifest)) {
+            var shikiCanWrite = true
+            try {
+                var shikiCur = Lampa.Manifest.plugins
+                Lampa.Manifest.plugins = shikiCur
+            } catch (e) { shikiCanWrite = false }
+            try {
+                var shikiFrozenDesc = null
+                try { shikiFrozenDesc = Object.getOwnPropertyDescriptor(Lampa.Manifest, 'plugins') } catch (ee) {}
+                if (shikiFrozenDesc && shikiFrozenDesc.writable === false) shikiCanWrite = false
+                if (typeof Object.isFrozen === 'function' && Object.isFrozen(Lampa.Manifest)) shikiCanWrite = false
+            } catch (ee) {}
+            if (!shikiCanWrite) {
+                try { if (typeof console !== 'undefined' && console.log) console.log('Shikimori: Manifest.plugins is read-only, context menu not available') } catch (ee) {}
+            } else if (Array.isArray(prevManifest)) {
                 prevManifest.push(shikiManifest)
             } else {
                 var shikiDesc = null
@@ -1681,7 +1750,8 @@
                                 if (ourRes) return ourRes
                                 if (prevRes) {
                                     if (typeof prevRes === 'object') return prevRes
-                                    return { name: prevManifest.name || '', description: prevManifest.description || '' }
+                                    var prevTitle = prevManifest.title || prevManifest.name || ''
+                                    return { title: prevTitle, name: prevTitle }
                                 }
                                 return false
                             },
