@@ -510,7 +510,7 @@
         else query = base
         var order = mode === 'top' ? 'ranked' : 'popularity'
         if (mode === 'anons') query += '&status=anons'
-        else if (mode === 'ongoing' || mode !== 'search') query += '&status=ongoing'
+        else if (mode === 'ongoing') query += '&status=ongoing'
         if (filters && typeof filters === 'object') {
             if (filters.kind) query += '&kind=' + encodeURIComponent(filters.kind)
             if (filters.status) { query = query.replace(/&status=[^&]*/g, ''); query += '&status=' + encodeURIComponent(filters.status) }
