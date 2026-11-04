@@ -418,7 +418,6 @@
             '.shiki-card__meta-item{display:inline}',
             '.shiki-card__meta-item+.shiki-card__meta-item:before{content:"·";display:inline-block;margin:0 .55em;color:rgba(255,255,255,.38)}',
             '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
-            '.shiki-card__meta-item+.shiki-card__meta-item:before{margin-left:.55em;margin-right:.55em}',
             '.shiki-card__score{color:#f0c477;font-weight:700;white-space:nowrap}',
             '.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.65);font-size:1em}',
             '.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.8em 0 1.2em;cursor:pointer;font-weight:600}',
@@ -447,6 +446,7 @@
             '.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.25em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}',
             '.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.06)!important;opacity:1}',
             '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#fff;color:#111;border-color:#fff;outline:none}',
+            '.shiki-subcard.selector--focus .shiki-subcard__sub,.shiki-subcard.focus .shiki-subcard__sub{color:rgba(0,0,0,.62)}',
             '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.2em;flex-shrink:0;background:rgba(255,255,255,.06)}',
             '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
             '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
@@ -1123,7 +1123,7 @@
                     '<div class="shiki-card__body">' +
                         '<div class="shiki-card__name">' + esc(primaryName) + '</div>' +
                         (showOrig ? '<div class="shiki-card__orig">' + esc(a.name) + '</div>' : '') +
-                        '<div class="shiki-card__meta">' + metaParts.join(' · ') + '</div>' +
+                        '<div class="shiki-card__meta">' + metaParts.join('') + '</div>' +
                     '</div>' +
                 '</div>'
             )
