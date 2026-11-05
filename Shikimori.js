@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.7'
+    var VERSION = '1.5.8'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -359,6 +359,7 @@
                 img._shikiPosterIndex = 0
             }
             $(img).on('error', function () {
+                try { if (typeof console !== 'undefined' && console.warn) console.warn('Shikimori poster load failed', {animeId: anime && anime.id, anime: anime && anime.name, failedUrl: this.currentSrc || this.src, candidateIndex: this._shikiPosterIndex || 0, candidates: this._shikiPosterCandidates || []}) } catch (e) {}
                 if (this._shikiPosterCandidates && this._shikiPosterIndex + 1 < this._shikiPosterCandidates.length) {
                     this._shikiPosterIndex++
                     this.src = this._shikiPosterCandidates[this._shikiPosterIndex]
@@ -1813,13 +1814,14 @@
             return
         }
         // Prefer the displayed title first: it usually retains the season/part suffix.
-        var rawQueries = [
-            card.title,
-            card.name,
-            card.original_title,
-            card.original_name,
+        function stripTrailingSequelNumber(title) {
+            return String(title || '').trim().replace(/\s+\d+$/, '').trim()
+        }
+        var rawQueries = [card.title, card.name, card.original_title, card.original_name,
             stripSeasonSuffix(card.title || card.name || ''),
-            stripSeasonSuffix(card.original_title || card.original_name || '')
+            stripSeasonSuffix(card.original_title || card.original_name || ''),
+            stripTrailingSequelNumber(card.title || card.name || ''),
+            stripTrailingSequelNumber(card.original_title || card.original_name || '')
         ]
         var queries = dedupeQueries(rawQueries)
         if (!queries.length) {
@@ -1869,14 +1871,14 @@
             var cardNames = dedupeQueries([
                 card.title, card.name, card.original_title, card.original_name,
                 stripSeasonSuffix(card.title || card.name || ''),
-                stripSeasonSuffix(card.original_title || card.original_name || '')
+                stripSeasonSuffix(card.original_title || card.original_name || ''),
+                stripTrailingSequelNumber(card.title || card.name || ''),
+                stripTrailingSequelNumber(card.original_title || card.original_name || '')
             ]).map(normalize).filter(Boolean)
             var names = animeNames(anime)
             for (var i = 0; i < names.length; i++) {
                 var full = normalize(names[i])
-                var baseTitle = stripSeasonSuffix(names[i])
-                // Shikimori sequel titles often end in a bare Arabic numeral (e.g. "... 2").
-                if (seasonHint) baseTitle = baseTitle.replace(/\s+\d+$/, '')
+                var baseTitle = stripTrailingSequelNumber(stripSeasonSuffix(names[i]))
                 var base = normalize(baseTitle)
                 if (cardNames.indexOf(full) >= 0 || (base && cardNames.indexOf(base) >= 0)) return true
             }
@@ -2133,10 +2135,9 @@
     var shikiRatingQueue = []
     var shikiRatingBusy = false
 
-    // Use the same anime detection as the full-card button: TMDB often omits
-    // Japanese language/country metadata but still supplies Animation genre.
-    function isShikiRatingCandidate(data) {
-        return isCardLikelyAnime(data)
+    function lampaCardTitles(data) {
+        if (!data || typeof data !== 'object') return []
+        return dedupeQueries([data.title, data.name, data.original_title, data.original_name, data.originalTitle, data.originalName])
     }
 
     function findExactShikiAnime(results, titles, year) {
@@ -2180,6 +2181,7 @@
     function attachShikiRating(job, result) {
         if (!job || !result || !job.render) return
         var root = $(job.render)
+        root.find('.wait_rating.shikimori-wait-rating').remove()
         var info = root.find('.info__rate').first()
         if (!info.length) {
             job.attachTries = (job.attachTries || 0) + 1
@@ -2208,6 +2210,7 @@
         var index = 0
         function tryTitle() {
             if (index >= job.titles.length) {
+                $(job.render).find('.wait_rating.shikimori-wait-rating').remove()
                 cacheSet(key, { notFound: true })
                 net.clear()
                 shikiRatingBusy = false
@@ -2230,11 +2233,13 @@
     }
 
     function queueShikiRating(data, render) {
-        if (!data || !render || !isShikiRatingCandidate(data)) return
+        if (!data || !render) return
         var root = $(render)
         if (root.find('.shikimori-full-rating').length || root.data('shikiRatingQueued')) return
         var titles = lampaCardTitles(data)
         if (!titles.length) return
+        if (!root.find('.rate--kp').hasClass('hide') || root.find('.wait_rating').length) return
+        root.find('.info__rate').first().after($('<div class="wait_rating shikimori-wait-rating">Shikimori: загрузка рейтинга…</div>'))
         root.data('shikiRatingQueued', true)
         var date = data.first_air_date || data.release_date || data.last_air_date || ''
         var year = date ? parseInt(String(date).substr(0, 4), 10) : 0
