@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.2'
+    var VERSION = '1.5.3'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -177,6 +177,9 @@
 
     var KIND = {
         tv: 'TV',
+        tv_13: 'TV · 13',
+        tv_24: 'TV · 24',
+        tv_48: 'TV · 48',
         tv_special: 'TV Special',
         special: 'Special',
         movie: 'Movie',
@@ -208,6 +211,13 @@
         var en = ['','Action','Adventure','Cars','Comedy','Dementia','Demons','Mystery','Drama','Ecchi','Fantasy','Game','','Historical','Horror','Kids','Magic','Martial Arts','Mecha','Music','Parody','Samurai','Romance','School','Sci-Fi','Shoujo','Shoujo Ai','Shounen','Shounen Ai','Space','Sports','Super Power','Vampire','Harem','Slice of Life','Supernatural','Military','Police','Psychological','Thriller','Seinen','Josei']
         var n = parseInt(id, 10)
         return (isRu() ? ru[n] : en[n]) || String(id)
+    }
+
+    function seasonTitle(value) {
+        var match = /^(winter|spring|summer|fall)_(\\d{4})$/.exec(String(value || ''))
+        if (!match) return String(value || '')
+        var names = isRu() ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' } : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' }
+        return names[match[1]] + ' ' + match[2]
     }
 
     function orderTitle(value) {
@@ -1075,6 +1085,10 @@
         var keyword = (object && object.search) ? String(object.search).trim() : ''
         var mode = (object && object.mode) ? object.mode : (keyword ? 'search' : 'ongoing')
         var filters = (object && object.filters && typeof object.filters === 'object') ? object.filters : {}
+        var adultFilterEnabled = false
+        try { adultFilterEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
+        if (!adultFilterEnabled && filters.rating === 'rx') delete filters.rating
+        if (!adultFilterEnabled && String(filters.genre) === '12') delete filters.genre
 
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
@@ -1180,7 +1194,7 @@
             var parts = []
             if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + kindTitle(filters.kind))
             if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
-            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + filters.season)
+            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + seasonTitle(filters.season))
             if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
             if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + filters.duration)
             if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
