@@ -258,7 +258,7 @@
       if (animeData.kind !== 'movie' && item.media_type === 'tv') score += 8;
 
       var animeYear = animeData.airedOn && parseInt(animeData.airedOn.year, 10);
-      var itemDate = item.release_date || item.first_air_date || '';
+      var itemDate = String(item.release_date || item.first_air_date || '');
       var itemYear = parseInt(itemDate.slice(0, 4), 10);
       if (animeYear && itemYear) {
         var yearDiff = Math.abs(animeYear - itemYear);
@@ -285,7 +285,7 @@
 
       runtimeCache.tmdb[cacheKey] = { results: candidates.slice(0, 10) };
 
-      if (candidates.length === 1) {
+      if (candidates.length === 1 && rankCandidate(candidates[0]) >= 70) {
         openFull(candidates[0], candidates[0].media_type);
         return;
       }
@@ -358,8 +358,6 @@
         searchNextTitle();
       });
     }
-
-    if (!animeData || !animeData.id) return;
 
     if (cache && cache.detail) {
       openFull(cache.detail, cache.mediaType);
