@@ -359,8 +359,15 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const groupMenu = selectCalls[selectCalls.length - 1];
   assert.equal(groupMenu.title, 'Оценки и формат');
   assert.equal(groupMenu.items.length, 3, 'group should expose only its related filters');
-  assert.ok(groupMenu.items.some(item => item.title === 'Минимальная оценка Shikimori'));
-  groupMenu.onBack();
+  const scoreFilter = groupMenu.items.find(item => item.title === 'Минимальная оценка Shikimori');
+  assert.ok(scoreFilter, 'group should expose the score filter');
+  groupMenu.onSelect(scoreFilter);
+
+  const scoreMenu = selectCalls[selectCalls.length - 1];
+  scoreMenu.onBack();
+  const returnedGroup = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedGroup.title, 'Оценки и формат', 'Back from a filter should return to its group');
+  returnedGroup.onBack();
 
   const returnedRoot = selectCalls[selectCalls.length - 1];
   assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
