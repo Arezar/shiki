@@ -234,6 +234,7 @@ function testLegacyCardFallbackSafety() {
   assert.equal(storage.lme_shikimori_watchlist, undefined, 'plugin must not create a duplicate local watchlist');
   assert.doesNotMatch(source, /getWatchlist|toggleWatchlist|WATCHLIST_KEY/);
   assert.match(source, /Lampa\.Maker\.make\('Card'/, 'Lampa 3.x should use native cards');
+  assert.match(source, /item\.menu_list\.push/, 'Shikimori actions should use the native card context menu');
   assert.match(source, /onCheck: function \(chosen\)/, 'genre filters should use checkbox callbacks');
 }
 
