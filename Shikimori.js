@@ -347,7 +347,7 @@
         items: [
           { title: 'Client ID', subtitle: config.client_id ? 'Настроен' : 'Не задан', field: fields[0] },
           { title: 'Client Secret', subtitle: config.client_secret ? 'Настроен' : 'Не задан', field: fields[1] },
-          { title: 'Redirect URI', subtitle: config.redirect_uri || 'Не задан', field: fields[2] },
+          { title: 'Redirect URI', subtitle: escapeHtml(config.redirect_uri || 'Не задан'), field: fields[2] },
           { title: 'Сохранить настройки', saveOAuth: true }
         ],
         onBack: function () {},
