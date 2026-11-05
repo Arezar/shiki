@@ -335,8 +335,9 @@
 
   function currentLampaRedirectUri() {
     var location = window.location;
-    if (!location || !location.origin || !location.pathname) return '';
-    return String(location.origin) + String(location.pathname);
+    if (!location || !location.pathname) return '';
+    var origin = location.origin || (location.protocol && location.host ? location.protocol + '//' + location.host : '');
+    return origin ? String(origin) + String(location.pathname) : '';
   }
 
   function clearOAuthCallbackFromAddressBar() {
