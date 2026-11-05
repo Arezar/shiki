@@ -627,16 +627,14 @@
       if (runtimeCache.genres) {
         filters.kind.items = runtimeCache.genres.slice();
       } else {
-        network.silent(
+        network.get(
           'https://shikimori.one/api/genres',
           function (response) {
             if (inited) setGenres(response);
           },
           function (error) {
-            console.warn('Shikimori: не удалось загрузить жанры', error);
-          },
-          null,
-          { timeout: 15000 }
+            if (inited) console.warn('Shikimori: не удалось загрузить жанры', error);
+          }
         );
       }
 
