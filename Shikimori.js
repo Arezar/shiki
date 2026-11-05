@@ -873,11 +873,21 @@
         },
         onEnter: function () {
           if (typeof handlers.enter === 'function') handlers.enter(this, data);
-        },
-        onLong: function () {
-          if (typeof handlers.long === 'function') handlers.long(this, data);
         }
       });
+      if (item.menu_list && typeof handlers.long === 'function') {
+        item.menu_list.push({
+          title: 'Shikimori',
+          menu: function () {
+            return [{
+              title: 'Изменить запись в Shikimori',
+              onSelect: function () {
+                handlers.long(item, data);
+              }
+            }];
+          }
+        });
+      }
       item.create();
       element = item.render(true);
     } else {
@@ -1293,7 +1303,7 @@
           episodes: normalized && normalized.episodes != null ? normalized.episodes : (changes.episodes != null ? changes.episodes : rate && rate.episodes || 0)
         };
         Lampa.Noty.show('Список Shikimori обновлён');
-        if (accountList) reloadCurrent();
+        reloadCurrent();
       }, function (xhr, status, message) {
         var apiMessage = xhr && xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message);
         Lampa.Noty.show('Не удалось обновить список Shikimori: ' + (apiMessage || message || status || 'ошибка API') +
@@ -1658,7 +1668,7 @@
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3}.LMEShikimori__user-status{position:absolute;left:.5em;bottom:.5em;z-index:3;padding:.3em .45em;border-radius:.25em;background:rgba(0,0,0,.78);color:#fff;font-size:.85em}.LMEShikimori.card__type{background:#ff4242;color:#fff}</style>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__user-status{position:absolute;left:.5em;bottom:.5em;z-index:3;padding:.3em .45em;border-radius:.25em;background:rgba(0,0,0,.78);color:#fff;font-size:.85em}</style>");
     Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div><div class=\"LMEShikimori__user-status\">{status}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
