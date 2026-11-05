@@ -16,6 +16,7 @@ const exportForTests = [
   '    Card: Card,',
   '    Component: Component$1,',
   '    parseOAuthRedirect: parseOAuthRedirect,',
+  '    handleOAuthCallbackFromLocation: handleOAuthCallbackFromLocation,',
   '    refreshAccessToken: refreshAccessToken,',
   '    normalizeUserRateEntry: normalizeUserRateEntry,',
   '    userRateStatusTitle: userRateStatusTitle,',
