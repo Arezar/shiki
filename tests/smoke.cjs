@@ -402,6 +402,7 @@ function testPaginationDeduplicationAndDestroy() {
 }
 
 function testEmptyRestoredPage() {
+  emptyCreated = 0;
   ajaxCalls.length = 0;
   const component = new api.Component({ page: 2 });
   component.activity = { loader() {}, toggle() {} };
