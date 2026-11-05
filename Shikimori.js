@@ -285,7 +285,7 @@
 
       runtimeCache.tmdb[cacheKey] = { results: candidates.slice(0, 10) };
 
-      if (candidates.length === 1 && rankCandidate(candidates[0]) >= 70) {
+      if (candidates.length === 1 && rankCandidate(candidates[0]) >= 90) {
         openFull(candidates[0], candidates[0].media_type);
         return;
       }
@@ -305,7 +305,13 @@
           Lampa.Controller.toggle('content');
         },
         onSelect: function (selected) {
-          if (selected && selected.card) openFull(selected.card, selected.card.media_type);
+          if (selected && selected.card) {
+            runtimeCache.tmdb[cacheKey] = {
+              detail: selected.card,
+              mediaType: selected.card.media_type
+            };
+            openFull(selected.card, selected.card.media_type);
+          }
         }
       });
     }
@@ -773,7 +779,9 @@
             scroll.update(items[active].render(true), true);
           }
         }).on('hover:enter', function () {
-          if (inited) API.search(anime, lookupNetwork);
+          if (!inited) return;
+          lookupNetwork.clear();
+          API.search(anime, lookupNetwork);
         });
 
         body.append(card);
