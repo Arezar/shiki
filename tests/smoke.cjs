@@ -15,7 +15,6 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
-  '    search: search,',
   '  };',
   startMarker
 ].join('\n');
@@ -456,6 +455,10 @@ function testCatalogueRetryAfterInitialFailure() {
   component.destroy();
 }
 
+function testTmdbAdultSearchFlagRemainsEnabled() {
+  assert.match(source, /&include_adult=true&query=/, 'TMDB fallback search should preserve the existing include_adult=true behavior');
+}
+
 function testNoAccountAuthorizationRemains() {
   assert.equal(Object.keys(storage.lme_shikimori_account_v1).length, 0, 'legacy OAuth credentials and tokens must be cleared');
   assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
@@ -496,6 +499,7 @@ testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testCatalogueRetryAfterInitialFailure();
 testLegacyCardFallbackSafety();
+testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (12 groups)\n');
