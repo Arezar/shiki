@@ -369,12 +369,12 @@
         var value = String(title || '').trim()
         if (!value) return ''
         value = value
-            .replace(/\\s*(?:[-:–—]\\s*)?(?:final\\s+season|финал)$/i, '')
-            .replace(/\\s*(?:[-:–—]\\s*)?(?:season|part|cour|s)\\s*(?:\\d+(?:\\.\\d+)?|ii|iii|iv|v|vi|vii|viii)$/i, '')
-            .replace(/\\s*(?:[-:–—]\\s*)?(?:\\d+(?:st|nd|rd|th)?\\s*(?:season|part|cour)|\\d+\\s*(?:сезон|часть)|(?:сезон|часть)\\s*\\d+)$/i, '')
-            .replace(/\\s+(?:ii|iii|iv|v|vi|vii|viii)$/i, '')
-            .replace(/\\s+\\d+$/, '')
-            .replace(/\\s{2,}/g, ' ')
+            .replace(/\s*(?:[-:–—]\s*)?(?:final\s+season|финал)$/i, '')
+            .replace(/\s*(?:[-:–—]\s*)?(?:season|part|cour|s)\s*(?:\d+(?:\.\d+)?|ii|iii|iv|v|vi|vii|viii)$/i, '')
+            .replace(/\s*(?:[-:–—]\s*)?(?:\d+(?:st|nd|rd|th)?\s*(?:season|part|cour)|\d+\s*(?:сезон|часть)|(?:сезон|часть)\s*\d+)$/i, '')
+            .replace(/\s+(?:ii|iii|iv|v|vi|vii|viii)$/i, '')
+            .replace(/\s+\d+$/, '')
+            .replace(/\s{2,}/g, ' ')
             .trim()
         return value
     }
@@ -2095,7 +2095,7 @@
                 var ids = []
                 function addId(value) {
                     var id = String(value || '').trim()
-                    if (/^\\d+$/.test(id) && ids.indexOf(id) < 0) ids.push(id)
+                    if (/^\d+$/.test(id) && ids.indexOf(id) < 0) ids.push(id)
                 }
                 if (Array.isArray(mapped)) {
                     mapped.forEach(function (item) {
