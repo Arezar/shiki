@@ -1,2720 +1,877 @@
-/**
- * Lampa plugin: Shikimori (https://shikimori.one) anime catalog & info
- * - Menu section with showcase tabs (Airing, Popular, Top, Upcoming) & title search
- * - Infinite scroll + "Load more" pagination without duplicate controls
- * - Scrollable full card: high-res poster, rating, genres, studios, clean description,
- *   YouTube trailers, screenshots, franchise chronology (related) & similar anime
- * - Smart TMDB lookup (original / English / Russian titles, season-suffix fallback,
- *   Animation/JP/year scoring)
- * - Card context-menu entry & optional full-card button with SVG icon
- * - Optimized for modern Smart TV browsers, targeting current LG webOS
- */
 (function () {
-    'use strict'
+  'use strict';
 
-    if (typeof window === 'undefined' || window.shikimori_plugin_ready) return
-    window.shikimori_plugin_ready = true
-
-    var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.6.0'
-    var PAGE = 20
-    var CACHE_TTL = 15 * 60 * 1000
-    var CACHE_MAX = 80
-    var hostIdx = 0
-
-    var ICON_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/><path d="M8 10l1.5 2L8 14M16 10l-1.5 2 1.5 2M12 8v8"/></svg>'
-    var SEARCH_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>'
-    var PLAY_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>'
-    var TMDB_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M7 9h4M9 9v6M14 9h3a2 2 0 0 1 0 4h-3V9z"/></svg>'
-
-    var PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect width="100" height="150" fill="#24262f"/><circle cx="50" cy="75" r="18" fill="none" stroke="#3a3f4e" stroke-width="3"/></svg>'
-    )
-
-    // Modern WebView target (LG webOS): use full Unicode letter/number support.
-    var UNICODE_NORM_RE = /[^\p{L}\p{N}]+/gu;
-
-    // ---------- in-memory TTL cache ----------
-    var cacheStore = {}
-    var cacheKeys = []
-
-    function cacheGet(key) {
-        var entry = cacheStore[key]
-        if (!entry) return undefined
-        if (Date.now() - entry.ts > CACHE_TTL) {
-            delete cacheStore[key]
-            var idx = cacheKeys.indexOf(key)
-            if (idx >= 0) cacheKeys.splice(idx, 1)
-            return undefined
-        }
-        return entry.val
+  function _arrayLikeToArray(r, a) {
+    (null == a || a > r.length) && (a = r.length);
+    for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
+    return n;
+  }
+  function _arrayWithoutHoles(r) {
+    if (Array.isArray(r)) return _arrayLikeToArray(r);
+  }
+  function asyncGeneratorStep(n, t, e, r, o, a, c) {
+    try {
+      var i = n[a](c),
+        u = i.value;
+    } catch (n) {
+      return void e(n);
     }
-
-    function cacheSet(key, val) {
-        if (!Object.prototype.hasOwnProperty.call(cacheStore, key)) {
-            if (cacheKeys.length >= CACHE_MAX) {
-                var oldest = cacheKeys.shift()
-                if (oldest !== undefined) delete cacheStore[oldest]
+    i.done ? t(u) : Promise.resolve(u).then(r, o);
+  }
+  function _asyncToGenerator(n) {
+    return function () {
+      var t = this,
+        e = arguments;
+      return new Promise(function (r, o) {
+        var a = n.apply(t, e);
+        function _next(n) {
+          asyncGeneratorStep(a, r, o, _next, _throw, "next", n);
+        }
+        function _throw(n) {
+          asyncGeneratorStep(a, r, o, _next, _throw, "throw", n);
+        }
+        _next(void 0);
+      });
+    };
+  }
+  function _defineProperty(e, r, t) {
+    return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
+      value: t,
+      enumerable: !0,
+      configurable: !0,
+      writable: !0
+    }) : e[r] = t, e;
+  }
+  function _iterableToArray(r) {
+    if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r);
+  }
+  function _nonIterableSpread() {
+    throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+  }
+  function ownKeys(e, r) {
+    var t = Object.keys(e);
+    if (Object.getOwnPropertySymbols) {
+      var o = Object.getOwnPropertySymbols(e);
+      r && (o = o.filter(function (r) {
+        return Object.getOwnPropertyDescriptor(e, r).enumerable;
+      })), t.push.apply(t, o);
+    }
+    return t;
+  }
+  function _objectSpread2(e) {
+    for (var r = 1; r < arguments.length; r++) {
+      var t = null != arguments[r] ? arguments[r] : {};
+      r % 2 ? ownKeys(Object(t), !0).forEach(function (r) {
+        _defineProperty(e, r, t[r]);
+      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) {
+        Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r));
+      });
+    }
+    return e;
+  }
+  function _regenerator() {
+    /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */
+    var e,
+      t,
+      r = "function" == typeof Symbol ? Symbol : {},
+      n = r.iterator || "@@iterator",
+      o = r.toStringTag || "@@toStringTag";
+    function i(r, n, o, i) {
+      var c = n && n.prototype instanceof Generator ? n : Generator,
+        u = Object.create(c.prototype);
+      return _regeneratorDefine(u, "_invoke", function (r, n, o) {
+        var i,
+          c,
+          u,
+          f = 0,
+          p = o || [],
+          y = !1,
+          G = {
+            p: 0,
+            n: 0,
+            v: e,
+            a: d,
+            f: d.bind(e, 4),
+            d: function (t, r) {
+              return i = t, c = 0, u = e, G.n = r, a;
             }
-            cacheKeys.push(key)
+          };
+        function d(r, n) {
+          for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) {
+            var o,
+              i = p[t],
+              d = G.p,
+              l = i[2];
+            r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0));
+          }
+          if (o || r > 1) return a;
+          throw y = !0, n;
         }
-        cacheStore[key] = { val: val, ts: Date.now() }
-    }
-
-    // ---------- localization ----------
-    var STRINGS = {
-        shikimori:            { ru: 'Аниме (Shikimori)', en: 'Anime (Shikimori)', uk: 'Аніме (Shikimori)' },
-        shikimori_on_shiki:   { ru: 'Информация на Shikimori', en: 'Info on Shikimori', uk: 'Інформація на Shikimori' },
-        shikimori_btn_short:  { ru: 'Shikimori', en: 'Shikimori', uk: 'Shikimori' },
-        shikimori_input_title:{ ru: 'Название аниме', en: 'Anime title', uk: 'Назва аніме' },
-        shikimori_search_btn: { ru: 'Поиск', en: 'Search', uk: 'Пошук' },
-        shikimori_tab_ongoing:{ ru: 'Онгоинги', en: 'Airing', uk: 'Онгоїнги' },
-        shikimori_tab_popular:{ ru: 'Популярное', en: 'Popular', uk: 'Популярне' },
-        shikimori_tab_top:    { ru: 'Топ рейтинга', en: 'Top rated', uk: 'Топ рейтингу' },
-        shikimori_tab_anons:  { ru: 'Анонсы', en: 'Upcoming', uk: 'Анонси' },
-        shikimori_tmdb:       { ru: 'Открыть в Lampa', en: 'Open in Lampa', uk: 'Відкрити в Lampa' },
-        shikimori_trailer:    { ru: 'Трейлер', en: 'Trailer', uk: 'Трейлер' },
-        shikimori_no_tmdb:    { ru: 'На TMDB ничего не найдено', en: 'Nothing found on TMDB', uk: 'На TMDB нічого не знайдено' },
-        shikimori_empty:      { ru: 'Ничего не найдено', en: 'Nothing found', uk: 'Нічого не знайдено' },
-        shikimori_no_descr:   { ru: 'Описание отсутствует', en: 'No description available', uk: 'Опис відсутній' },
-        shikimori_error:      { ru: 'Ошибка загрузки Shikimori', en: 'Shikimori load error', uk: 'Помилка завантаження Shikimori' },
-        shikimori_retry:      { ru: 'Повторить', en: 'Retry', uk: 'Повторити' },
-        shikimori_choose:     { ru: 'Выберите результат', en: 'Choose a result', uk: 'Оберіть результат' },
-        shikimori_load_more:  { ru: 'Загрузить ещё', en: 'Load more', uk: 'Завантажити ще' },
-        shikimori_related:    { ru: 'Связанное (франшиза)', en: 'Related (franchise)', uk: 'Пов’язане (франшиза)' },
-        shikimori_similar:    { ru: 'Похожее аниме', en: 'Similar anime', uk: 'Схоже аніме' },
-        shikimori_screenshots:{ ru: 'Кадры', en: 'Screenshots', uk: 'Кадри' },
-        shikimori_movie:      { ru: 'Фильм', en: 'Movie', uk: 'Фільм' },
-        shikimori_series:     { ru: 'Сериал', en: 'Series', uk: 'Серіал' },
-        shikimori_episodes:   { ru: 'эп.', en: 'ep.', uk: 'еп.' },
-        shikimori_minutes:    { ru: 'мин.', en: 'min', uk: 'хв.' },
-        shikimori_score:      { ru: 'Оценка', en: 'Score', uk: 'Оцінка' },
-        shikimori_rate:       { ru: 'Рейтинг', en: 'Rating', uk: 'Рейтинг' },
-        shikimori_released:   { ru: 'Вышел', en: 'Released', uk: 'Вийшов' },
-        shikimori_studios:    { ru: 'Студия', en: 'Studio', uk: 'Студія' },
-        shikimori_alt_names:  { ru: 'Альтернативные названия', en: 'Alternative names', uk: 'Альтернативні назви' },
-        shikimori_anons:      { ru: 'Анонс', en: 'Upcoming', uk: 'Анонс' },
-        shikimori_ongoing:    { ru: 'Онгоинг', en: 'Airing', uk: 'Онгоїнг' },
-        shikimori_released_s: { ru: 'Вышло', en: 'Released', uk: 'Вийшло' },
-        shikimori_cancelled:  { ru: 'Отменён', en: 'Cancelled', uk: 'Скасовано' },
-        shikimori_paused:     { ru: 'Приостановлен', en: 'Paused', uk: 'Призупинено' },
-        shikimori_context_menu: { ru: 'Пункт в контекстном меню карточки', en: 'Entry in card context menu', uk: 'Пункт у контекстному меню картки' },
-        shikimori_full_button:  { ru: 'Кнопка Shikimori в карточке фильма', en: 'Shikimori button in movie card', uk: 'Кнопка Shikimori у картці фільму' },
-        shikimori_anime_only:   { ru: 'Кнопка только для аниме и мультфильмов', en: 'Button only for anime & animation', uk: 'Кнопка лише для аніме та мультфільмів' },
-        shikimori_host_label:   { ru: 'Зеркало Shikimori', en: 'Shikimori mirror', uk: 'Дзеркало Shikimori' },
-        shikimori_host_auto:    { ru: 'Автоматически', en: 'Automatic', uk: 'Автоматично' },
-        shikimori_adult:         { ru: 'Показывать аниме 18+', en: 'Include adult anime (18+)', uk: 'Показувати аніме 18+' },
-        shikimori_more:         { ru: 'ещё', en: 'more', uk: 'ще' },
-        shikimori_filters:      { ru: 'Фильтры', en: 'Filters', uk: 'Фільтри' },
-        shikimori_filter_kind:  { ru: 'Тип', en: 'Type', uk: 'Тип' },
-        shikimori_filter_status:{ ru: 'Статус', en: 'Status', uk: 'Статус' },
-        shikimori_filter_year:  { ru: 'Год / сезон', en: 'Year / season', uk: 'Рік / сезон' },
-        shikimori_filter_genre: { ru: 'Жанр', en: 'Genre', uk: 'Жанр' },
-        shikimori_filter_score: { ru: 'Минимальная оценка', en: 'Minimum score', uk: 'Мінімальна оцінка' },
-        shikimori_filter_duration:{ ru: 'Длительность', en: 'Duration', uk: 'Тривалість' },
-        shikimori_filter_rating:{ ru: 'Возрастной рейтинг', en: 'Age rating', uk: 'Віковий рейтинг' },
-        shikimori_filter_order: { ru: 'Сортировка', en: 'Sort by', uk: 'Сортування' },
-        shikimori_filter_clear: { ru: 'Сбросить фильтры', en: 'Clear filters', uk: 'Скинути фільтри' },
-        shikimori_filter_any:   { ru: 'Любой', en: 'Any', uk: 'Будь-який' },
-        shikimori_filter_active:{ ru: 'Активно', en: 'Active', uk: 'Активно' }
-    }
-
-    function lang() {
-        return (typeof Lampa !== 'undefined' && Lampa.Lang && Lampa.Lang.get) ? Lampa.Lang.get() : 'ru'
-    }
-
-    function tr(key) {
-        if (typeof Lampa !== 'undefined' && Lampa.Lang && Lampa.Lang.translate) {
-            return Lampa.Lang.translate(key)
-        }
-        var entry = STRINGS[key]
-        if (!entry) return key
-        return entry[lang()] || entry.ru || key
-    }
-
-    function isRu() {
-        var l = lang()
-        return l === 'ru' || l === 'uk' || l === 'be'
-    }
-
-    // ---------- pure utils ----------
-    var ESC_MAP = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-    }
-
-    function esc(str) {
-        if (str === null || str === undefined) return ''
-        return String(str).replace(/[&<>"']/g, function (ch) { return ESC_MAP[ch] })
-    }
-
-    function cleanDescription(text) {
-        if (!text) return ''
-        var s = String(text)
-        // Strip [spoiler]...[/spoiler] blocks completely so plot twists are not leaked
-        var prev
-        do {
-            prev = s
-            s = s.replace(/\[\s*spoiler(?:=[^\]]*)?\][\s\S]*?\[\/\s*spoiler\s*\]/gi, '')
-        } while (s !== prev)
-        // Remove remaining BBCode tags while preserving inner readable text
-        s = s.replace(/\[\/?[a-z_]+(?:=[^\]]*)?\]/gi, '')
-        s = s.replace(/\[[^\]]*\]/g, '')
-        s = s.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/[ \t]{2,}/g, ' ')
-        s = s.replace(/\n{3,}/g, '\n\n')
-        return s.trim()
-    }
-
-    var KIND = {
-        tv: 'TV',
-        tv_13: 'TV · 13',
-        tv_24: 'TV · 24',
-        tv_48: 'TV · 48',
-        tv_special: 'TV Special',
-        special: 'Special',
-        movie: 'Movie',
-        ova: 'OVA',
-        ona: 'ONA',
-        music: 'Music',
-        pv: 'PV',
-        cm: 'CM',
-        tv_ova: 'OVA'
-    }
-
-    function kindTitle(kind) {
-        return KIND[kind] || kind || '?'
-    }
-
-    function statusTitle(s) {
-        var map = {
-            anons: tr('shikimori_anons'),
-            ongoing: tr('shikimori_ongoing'),
-            released: tr('shikimori_released_s'),
-            cancelled: tr('shikimori_cancelled'),
-            paused: tr('shikimori_paused')
-        }
-        return map[s] || s || ''
-    }
-
-    function genreTitle(id) {
-        var ru = ['','Экшен','Приключения','Машины','Комедия','Безумие','Демоны','Детектив','Драма','Этти','Фэнтези','Игры','','Исторический','Ужасы','Детское','Магия','Боевые искусства','Меха','Музыка','Пародия','Самураи','Романтика','Школа','Фантастика','Сёдзё','Сёдзё-ай','Сёнэн','Сёнэн-ай','Космос','Спорт','Сверхспособности','Вампиры','Гарем','Повседневность','Сверхъестественное','Военное','Полиция','Психологическое','Триллер','Сэйнэн','Дзёсэй']
-        var en = ['','Action','Adventure','Cars','Comedy','Dementia','Demons','Mystery','Drama','Ecchi','Fantasy','Game','','Historical','Horror','Kids','Magic','Martial Arts','Mecha','Music','Parody','Samurai','Romance','School','Sci-Fi','Shoujo','Shoujo Ai','Shounen','Shounen Ai','Space','Sports','Super Power','Vampire','Harem','Slice of Life','Supernatural','Military','Police','Psychological','Thriller','Seinen','Josei']
-        var n = parseInt(id, 10)
-        return (isRu() ? ru[n] : en[n]) || String(id)
-    }
-
-    function seasonTitle(value) {
-        var match = /^(winter|spring|summer|fall)_(\d{4})$/.exec(String(value || ''))
-        if (!match) return String(value || '')
-        var names = isRu() ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' } : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' }
-        return names[match[1]] + ' ' + match[2]
-    }
-
-    function durationTitle(value) {
-        var map = {
-            S: '< 10 ' + tr('shikimori_minutes'),
-            D: '< 30 ' + tr('shikimori_minutes'),
-            F: '30+ ' + tr('shikimori_minutes')
-        }
-        return map[value] || value
-    }
-
-    function orderTitle(value) {
-        var map = {
-            popularity: isRu() ? 'Популярность' : 'Popularity',
-            ranked: isRu() ? 'Рейтинг' : 'Ranked',
-            ranked_shiki: isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking',
-            aired_on: isRu() ? 'Дата выхода' : 'Release date',
-            name: isRu() ? 'Название' : 'Name A–Z',
-            episodes: isRu() ? 'Количество серий' : 'Episode count',
-            status: isRu() ? 'Статус выхода' : 'Release status'
-        }
-        return map[value] || value
-    }
-
-    function formatScore(score) {
-        var n = parseFloat(score)
-        if (!n || isNaN(n) || n <= 0) return ''
-        return String(score)
-    }
-
-    var RATING_MAP = {
-        g: 'G',
-        pg: 'PG',
-        pg_13: 'PG-13',
-        r: 'R-17',
-        r_plus: 'R+',
-        rx: 'Rx'
-    }
-
-    function formatRating(rating) {
-        if (!rating || rating === 'none') return ''
-        return RATING_MAP[rating] || String(rating).toUpperCase()
-    }
-
-    function formatEpisodes(a) {
-        if (!a) return ''
-        var total = parseInt(a.episodes, 10) || 0
-        var aired = parseInt(a.episodes_aired, 10) || 0
-        var unit = tr('shikimori_episodes')
-        if (a.status === 'ongoing' || (total === 0 && aired > 0)) {
-            if (aired > 0 && total > 0) return aired + ' / ' + total + ' ' + unit
-            if (aired > 0) return aired + ' / ? ' + unit
-        }
-        if (total > 0) return total + ' ' + unit
-        return ''
-    }
-
-    function activeHost() {
-        if (typeof Lampa !== 'undefined' && Lampa.Storage && Lampa.Storage.field) {
-            var pref = Lampa.Storage.field('shikimori_host')
-            if (pref && pref !== 'auto' && HOSTS.indexOf(pref) >= 0) return pref
-        }
-        return HOSTS[hostIdx] || HOSTS[0]
-    }
-
-    function resolveImageUrl(rawPath) {
-        if (!rawPath || typeof rawPath !== 'string') return PLACEHOLDER
-        var p = rawPath.trim()
-        if (!p) return PLACEHOLDER
-        if (p.indexOf('https://') === 0 || p.indexOf('http://') === 0) return p
-        if (p.indexOf('//') === 0) return 'https:' + p
-        if (p.charAt(0) === '/') return activeHost() + p
-        return PLACEHOLDER
-    }
-
-    function resolvePosterUrlCandidates(rawPath) {
-        if (!rawPath || typeof rawPath !== 'string') return []
-        var path = rawPath.trim()
-        if (!path) return []
-        if (path.indexOf('//') === 0) path = 'https:' + path
-
-        var urls = []
-        function add(url) {
-            if (url && url !== PLACEHOLDER && urls.indexOf(url) < 0) urls.push(url)
-        }
-
-        var schemePos = path.indexOf('://')
-        if (schemePos > 0) {
-            var authorityStart = schemePos + 3
-            var boundary = path.indexOf('/', authorityStart)
-            var queryPos = path.indexOf('?', authorityStart)
-            var hashPos = path.indexOf('#', authorityStart)
-            if (boundary < 0 || (queryPos >= 0 && queryPos < boundary) || (hashPos >= 0 && hashPos < boundary)) {
-                boundary = queryPos >= 0 ? queryPos : hashPos
-            }
-            var origin = boundary >= 0 ? path.substring(0, boundary) : path
-            var suffix = boundary >= 0 ? path.substring(boundary) : '/'
-            if (suffix.charAt(0) === '?' || suffix.charAt(0) === '#') suffix = '/' + suffix
-            add(path)
-
-            var knownHost = HOSTS.some(function (host) {
-                return origin.toLowerCase() === host.toLowerCase()
-            })
-            if (knownHost) HOSTS.forEach(function (host) { add(host + suffix) })
-            return urls
-        }
-
-        if (path.charAt(0) === '/') {
-            add(activeHost() + path)
-            HOSTS.forEach(function (host) { add(host + path) })
-        }
-        return urls
-    }
-
-    function posterCandidates(a, highRes) {
-        if (!a) return []
-        var paths = []
-        function add(path) {
-            if (path && typeof path === 'string' && paths.indexOf(path) < 0) paths.push(path)
-        }
-
-        // GraphQL exposes the current full-size poster; REST image fields remain fallbacks.
-        if (a.poster) {
-            add(a.poster.originalUrl)
-            add(a.poster.original)
-            add(a.poster.mainUrl)
-            add(a.poster.main)
-            add(a.poster.previewUrl)
-            add(a.poster.preview)
-        }
-        if (a.image) {
-            add(a.image.original)
-            add(a.image.preview)
-            add(a.image.x96)
-            add(a.image.x48)
-        }
-
-        var urls = []
-        paths.forEach(function (path) {
-            resolvePosterUrlCandidates(path).forEach(function (url) {
-                if (urls.indexOf(url) < 0) urls.push(url)
-            })
-        })
-        return urls
-    }
-
-    // Shikimori's v1 REST image field can be an older/low-resolution poster.
-    // GraphQL poster.originalUrl returns the current poster used by the website.
-    function fetchShikiPoster(animeId, success) {
-        var id = String(animeId || '').trim()
-        var validId = /^[0-9]+$/.test(id)
-        var cacheKey = 'shiki-poster:' + id
-        var cached = validId ? cacheGet(cacheKey) : undefined
-        var cancelled = false
-        var request = null
-
-        function finish(url) {
-            if (cancelled) return
-            if (url) cacheSet(cacheKey, url)
-            if (typeof success === 'function') success(url || '')
-        }
-
-        if (cached) {
-            finish(cached)
-            return function () {}
-        }
-        if (!validId || typeof $.ajax !== 'function') {
-            finish('')
-            return function () {}
-        }
-
-        var hosts = getHostCandidates()
-        var hostIndex = 0
-        var query = 'query($id: String!) { animes(ids: $id, limit: 1) { id poster { originalUrl } } }'
-
-        function tryHost() {
-            if (cancelled) return
-            if (hostIndex >= hosts.length) {
-                finish('')
-                return
-            }
-
-            var host = hosts[hostIndex++]
+        return function (o, p, l) {
+          if (f > 1) throw TypeError("Generator is already running");
+          for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) {
+            i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u);
             try {
-                request = $.ajax({
-                    url: host + '/api/graphql',
-                    method: 'POST',
-                    contentType: 'application/json; charset=utf-8',
-                    dataType: 'json',
-                    data: JSON.stringify({ query: query, variables: { id: id } }),
-                    timeout: 8000
-                })
-                request.done(function (response) {
-                    if (cancelled) return
-                    var animes = response && response.data && Array.isArray(response.data.animes)
-                        ? response.data.animes
-                        : []
-                    var posterUrl = ''
-                    for (var i = 0; i < animes.length; i++) {
-                        if (animes[i] && String(animes[i].id) === id &&
-                            animes[i].poster && typeof animes[i].poster.originalUrl === 'string') {
-                            posterUrl = animes[i].poster.originalUrl.trim()
-                            if (posterUrl) break
-                        }
-                    }
-                    if (!posterUrl) {
-                        tryHost()
-                        return
-                    }
-                    var foundHost = HOSTS.indexOf(host)
-                    if (foundHost >= 0) hostIdx = foundHost
-                    finish(posterUrl)
-                }).fail(function () {
-                    tryHost()
-                })
-            } catch (e) {
-                tryHost()
+              if (f = 2, i) {
+                if (c || (o = "next"), t = i[o]) {
+                  if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object");
+                  if (!t.done) return t;
+                  u = t.value, c < 2 && (c = 0);
+                } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1);
+                i = e;
+              } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break;
+            } catch (t) {
+              i = e, c = 1, u = t;
+            } finally {
+              f = 1;
             }
-        }
+          }
+          return {
+            value: t,
+            done: y
+          };
+        };
+      }(r, o, i), !0), u;
+    }
+    var a = {};
+    function Generator() {}
+    function GeneratorFunction() {}
+    function GeneratorFunctionPrototype() {}
+    t = Object.getPrototypeOf;
+    var c = [][n] ? t(t([][n]())) : (_regeneratorDefine(t = {}, n, function () {
+        return this;
+      }), t),
+      u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c);
+    function f(e) {
+      return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e;
+    }
+    return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine(u), _regeneratorDefine(u, o, "Generator"), _regeneratorDefine(u, n, function () {
+      return this;
+    }), _regeneratorDefine(u, "toString", function () {
+      return "[object Generator]";
+    }), (_regenerator = function () {
+      return {
+        w: i,
+        m: f
+      };
+    })();
+  }
+  function _regeneratorDefine(e, r, n, t) {
+    var i = Object.defineProperty;
+    try {
+      i({}, "", {});
+    } catch (e) {
+      i = 0;
+    }
+    _regeneratorDefine = function (e, r, n, t) {
+      function o(r, n) {
+        _regeneratorDefine(e, r, function (e) {
+          return this._invoke(r, n, e);
+        });
+      }
+      r ? i ? i(e, r, {
+        value: n,
+        enumerable: !t,
+        configurable: !t,
+        writable: !t
+      }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2));
+    }, _regeneratorDefine(e, r, n, t);
+  }
+  function _toConsumableArray(r) {
+    return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread();
+  }
+  function _toPrimitive(t, r) {
+    if ("object" != typeof t || !t) return t;
+    var e = t[Symbol.toPrimitive];
+    if (void 0 !== e) {
+      var i = e.call(t, r || "default");
+      if ("object" != typeof i) return i;
+      throw new TypeError("@@toPrimitive must return a primitive value.");
+    }
+    return ("string" === r ? String : Number)(t);
+  }
+  function _toPropertyKey(t) {
+    var i = _toPrimitive(t, "string");
+    return "symbol" == typeof i ? i : i + "";
+  }
+  function _unsupportedIterableToArray(r, a) {
+    if (r) {
+      if ("string" == typeof r) return _arrayLikeToArray(r, a);
+      var t = {}.toString.call(r).slice(8, -1);
+      return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0;
+    }
+  }
 
-        tryHost()
-        return function () {
-            cancelled = true
-            if (request && typeof request.abort === 'function') {
-                try { request.abort() } catch (e) {}
-            }
+  function main(params, oncomplite, onerror) {
+    $(document).ready(function () {
+      // Начинаем формировать запрос с базовыми параметрами
+      var query = "\n            query Animes {\n                animes(limit: 36, order: ".concat(params.sort || 'aired_on', ", page: ").concat(params.page, "\n        ");
+
+      // Добавляем фильтры, если они присутствуют в params
+      if (params.kind) {
+        query += ", kind: \"".concat(params.kind, "\"");
+      }
+      if (params.status) {
+        query += ", status: \"".concat(params.status, "\"");
+      }
+      if (params.genre) {
+        query += ", genre: \"".concat(params.genre, "\"");
+      }
+      if (params.seasons) {
+        query += ", season: \"".concat(params.seasons, "\"");
+      }
+
+      // Закрываем параметры и продолжаем запрос
+      query += ") {\n                    id\n                    name\n                    russian\n                    licenseNameRu\n                    english\n                    japanese\n                    kind\n                    score\n                    status\n                    season\n                    airedOn { year }\n                    poster {\n                        originalUrl\n                    }\n                }\n            }\n        ";
+      $.ajax({
+        url: 'https://shikimori.one/api/graphql',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          query: query
+        }),
+        success: function success(response) {
+          oncomplite(response.data.animes);
+        },
+        error: function error(_error) {
+          console.error('Shikimori', 'Error:', _error);
+          onerror(_error); // Вызов onerror при ошибке запроса
         }
+      });
+    });
+  }
+  function search(animeData) {
+    //Cleaner
+    function cleanName(name) {
+      // Регулярное выражение для удаления фраз "Season", "Part" и цифр рядом с ними
+      var regex = /\b(Season|Part)\s*\d*\.?\d*\b/gi;
+
+      // Удаляем нежелательные фразы
+      var cleanedName = name.replace(regex, '').trim();
+
+      // Удаляем лишние пробелы
+      cleanedName = cleanedName.replace(/\s{2,}/g, ' ');
+      return cleanedName;
     }
 
-
-
-    function posterOf(a, highRes) {
-        var candidates = posterCandidates(a, highRes)
-        return candidates.length ? candidates[0] : PLACEHOLDER
+    // Первый GET запрос к https://animeapi.my.id/shikimori/{animeData.id}
+    $.get("https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=".concat(animeData.id), function (response) {
+      if (response === null) {
+        console.log('Shikimori', 'We here step#1');
+        // Если получили 404, продолжаем искать на TMDB
+        searchTmdb(animeData.name, function (tmdbResponse) {
+          handleTmdbResponse(tmdbResponse, animeData.japanese);
+        });
+      } else if (response.themoviedb === null) {
+        console.log('Shikimori', 'We here step#2');
+        // Если themoviedb: null, делаем запрос к https://api.themoviedb.org/3/search/multi?include_adult=true&query={animeData.name}
+        searchTmdb(animeData.name, function (tmdbResponse) {
+          handleTmdbResponse(tmdbResponse, animeData.japanese);
+        });
+      } else {
+        console.log('Shikimori', 'We here step#3', animeData.kind);
+        // Если themoviedb не равно null, делаем запрос к https://api.themoviedb.org/3/movie/{response.themoviedb}
+        getTmdb(response.themoviedb, animeData.kind, processResults);
+      }
+    }).fail(function (jqXHR) {
+      if (jqXHR.status === 404) {
+        // Если получили 404, продолжаем искать на TMDB
+        searchTmdb(animeData.name, function (tmdbResponse) {
+          handleTmdbResponse(tmdbResponse, animeData.japanese);
+        });
+      } else {
+        console.error('Error fetching data from animeapi.my.id:', jqXHR.status);
+      }
+    });
+    function searchTmdb(query, callback) {
+      //PFS
+      var apiKey = "4ef0d7355d9ffb5151e987764708ce96";
+      var apiUrlTMDB = 'https://api.themoviedb.org/3/';
+      var apiUrlProxy = 'apitmdb.' + (Lampa.Manifest && Lampa.Manifest.cub_domain ? Lampa.Manifest.cub_domain : 'cub.red') + '/3/';
+      var request = "search/multi?api_key=".concat(apiKey, "&language=").concat(Lampa.Storage.field('language'), "&include_adult=true&query=").concat(cleanName(query));
+      $.get(Lampa.Storage.field('proxy_tmdb') ? Lampa.Utils.protocol() + apiUrlProxy + request : apiUrlTMDB + request, callback);
     }
-
-    function bindImgFallback(container, anime, posterSelector, highRes) {
-        container.find('img').each(function () {
-            var img = this
-            if (anime && (!posterSelector || $(img).is(posterSelector))) {
-                img._shikiPosterCandidates = posterCandidates(anime, !!highRes)
-                img._shikiPosterIndex = 0
-            }
-            $(img).on('error', function () {
-                try { if (typeof console !== 'undefined' && console.warn) console.warn('Shikimori poster load failed', {animeId: anime && anime.id, anime: anime && anime.name, failedUrl: this.currentSrc || this.src, candidateIndex: this._shikiPosterIndex || 0, candidates: this._shikiPosterCandidates || []}) } catch (e) {}
-                if (this._shikiPosterCandidates && this._shikiPosterIndex + 1 < this._shikiPosterCandidates.length) {
-                    this._shikiPosterIndex++
-                    this.src = this._shikiPosterCandidates[this._shikiPosterIndex]
-                    return
-                }
-                if (this._shikiFallback) return
-                this._shikiFallback = 1
-                this.src = PLACEHOLDER
-            })
-            // On fast/cached failures the image can finish before the handler is attached.
-            // Replay that already-fired failure so the alternate poster URL is still tried.
-            if (img.complete && typeof img.naturalWidth === 'number' && img.naturalWidth === 0) {
-                $(img).triggerHandler('error')
-            }
-        })
+    function getTmdb(id) {
+      var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'movie';
+      var callback = arguments.length > 2 ? arguments[2] : undefined;
+      console.log('Shikimori', 'id:', id, 'type:', type);
+      var apiKey = "4ef0d7355d9ffb5151e987764708ce96";
+      var apiUrlTMDB = 'https://api.themoviedb.org/3/';
+      var apiUrlProxy = 'apitmdb.' + (Lampa.Manifest && Lampa.Manifest.cub_domain ? Lampa.Manifest.cub_domain : 'cub.red') + '/3/';
+      var request = "".concat(type, "/").concat(id, "?api_key=").concat(apiKey, "&language=").concat(Lampa.Storage.field('language'));
+      $.get(Lampa.Storage.field('proxy_tmdb') ? Lampa.Utils.protocol() + apiUrlProxy + request : apiUrlTMDB + request, callback);
     }
-
-    function normalize(s) {
-        return String(s || '').toLowerCase().replace(UNICODE_NORM_RE, ' ').trim()
+    function handleTmdbResponse(tmdbResponse, fallbackQuery) {
+      if (tmdbResponse.total_results === 0) {
+        // Если результатов нет, делаем запрос с японским именем
+        searchTmdb(fallbackQuery, handleFallbackResponse);
+      } else {
+        processResults(tmdbResponse);
+      }
     }
-
-    function stripSeasonSuffix(title) {
-        if (!title) return ''
-        var s = String(title).trim()
-        // Remove explicit season/part/cour markers
-        s = s.replace(/\s*(?::|-|–|—)?\s*(?:the\s+)?(?:final\s+season|(?:\d+(?:st|nd|rd|th)\s+season)|(?:season\s*\d+)|(?:part\s*\d+)|(?:cour\s*\d+)|(?:\d+\s*сезон)|(?:сезон\s*\d+)|(?:часть\s*\d+)|(?:финал))$/i, '')
-        // Remove trailing Roman numerals II..VIII when preceded by space
-        s = s.replace(/\s+(?:II|III|IV|V|VI|VII|VIII)$/, '')
-        return s.trim()
+    function handleFallbackResponse(fallbackResponse) {
+      processResults(fallbackResponse);
     }
-
-    function cleanCardTitle(title) {
-        var value = String(title || '').trim()
-        if (!value) return ''
-        value = value
-            .replace(/\s*(?:[-:–—]\s*)?(?:final\s+season|финал)$/i, '')
-            .replace(/\s*(?:[-:–—]\s*)?(?:season|part|cour|s)\s*(?:\d+(?:\.\d+)?|ii|iii|iv|v|vi|vii|viii)$/i, '')
-            .replace(/\s*(?:[-:–—]\s*)?(?:\d+(?:st|nd|rd|th)?\s*(?:season|part|cour)|\d+\s*(?:сезон|часть)|(?:сезон|часть)\s*\d+)$/i, '')
-            .replace(/\s+(?:ii|iii|iv|v|vi|vii|viii)$/i, '')
-            .replace(/\s+\d+$/, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim()
-        return value
-    }
-
-
-
-    function dedupeQueries(list) {
-        var seen = {}
-        var out = []
-        if (!Array.isArray(list)) return out
-        for (var i = 0; i < list.length; i++) {
-            var raw = list[i]
-            if (!raw || typeof raw !== 'string') continue
-            var trimmed = raw.trim()
-            if (!trimmed) continue
-            var key = normalize(trimmed) || trimmed.toLowerCase()
-            if (!seen[key]) {
-                seen[key] = 1
-                out.push(trimmed)
-            }
-        }
-        return out
-    }
-
-    function extractYoutubeId(url) {
-        if (!url || typeof url !== 'string') return ''
-        var m = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/)
-        return m ? m[1] : ''
-    }
-
-    function extractTrailers(videos) {
-        if (!Array.isArray(videos)) return []
-        var seen = {}
-        var out = []
-        for (var i = 0; i < videos.length; i++) {
-            var v = videos[i]
-            if (!v) continue
-            var id = extractYoutubeId(v.url) || extractYoutubeId(v.player_url)
-            if (id && !seen[id]) {
-                seen[id] = 1
-                out.push({
-                    id: id,
-                    title: v.name || tr('shikimori_trailer'),
-                    subtitle: (v.kind ? String(v.kind).toUpperCase() : 'YouTube'),
-                    url: 'https://www.youtube.com/watch?v=' + id,
-                    youtube: true
-                })
-            }
-        }
-        return out
-    }
-
-    function isCardLikelyAnime(card) {
-        if (!card || typeof card !== 'object') return false
-        var hasMetadata = false
-
-        if (typeof card.original_language === 'string' && card.original_language) {
-            hasMetadata = true
-            if (card.original_language.toLowerCase() === 'ja') return true
-        }
-
-        if (Array.isArray(card.origin_country) && card.origin_country.length) {
-            hasMetadata = true
-            if (card.origin_country.indexOf('JP') >= 0) return true
-        }
-
-        if (Array.isArray(card.production_countries) && card.production_countries.length) {
-            hasMetadata = true
-            for (var c = 0; c < card.production_countries.length; c++) {
-                var pc = card.production_countries[c]
-                if (pc && (pc.iso_3166_1 === 'JP' || /japan|япони/i.test(pc.name || ''))) return true
-            }
-        }
-
-        if (Array.isArray(card.genre_ids) && card.genre_ids.length) {
-            hasMetadata = true
-            if (card.genre_ids.indexOf(16) >= 0) return true
-        }
-
-        if (Array.isArray(card.genres) && card.genres.length) {
-            hasMetadata = true
-            for (var g = 0; g < card.genres.length; g++) {
-                var genre = card.genres[g]
-                if (!genre) continue
-                if (genre.id === 16) return true
-                if (typeof genre === 'string' && /anime|аниме|аніме|animation|мультфильм|мультфільм/i.test(genre)) return true
-                if (genre.name && /anime|аниме|аніме|animation|мультфильм|мультфільм/i.test(genre.name)) return true
-            }
-        }
-
-        // If card object has no genre/language/country fields at all, allow by default
-        return !hasMetadata
-    }
-
-    // ---------- styles ----------
-    var cssInjected = false
-    function injectCss() {
-        if (cssInjected) return
-        cssInjected = true
-        var css = [
-            '.shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}',
-            '.shiki-full-wrap{height:100%;min-height:0;overflow:hidden;position:relative}',
-            '.shiki-full-wrap>.scroll{height:100%;max-height:100%;min-height:0;overflow:hidden}',
-            '.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}',
-            '.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:2em;padding-right:2em}',
-            '.shiki-toolbar{display:block;width:100%;max-width:100%;box-sizing:border-box;padding:.45em 0 1.1em}',
-            '.shiki-toolbar__tools,.shiki-toolbar__tabs{display:flex;flex-flow:row wrap;align-items:stretch;width:100%;max-width:100%;box-sizing:border-box}',
-            '.shiki-toolbar__tools{margin-bottom:.35em}',
-            '.shiki-toolbar .shiki-tab{display:flex;align-items:center;box-sizing:border-box;min-width:0;max-width:100%;min-height:2.8em;padding:.35em 1.05em;margin:0 .5em .5em 0;background:rgba(255,255,255,.055);border:0;border-radius:1em;color:rgba(255,255,255,.88);font-size:1.02em;line-height:1.2;cursor:pointer}',
-            '.shiki-toolbar__tools .shiki-tab--search{flex:1 1 18em;justify-content:flex-start;text-align:left}',
-            '.shiki-toolbar__tools .shiki-tab--filter{flex:0 0 auto;justify-content:center;min-width:8em}',
-            '.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 9em;justify-content:center;text-align:center}',
-            '.shiki-toolbar .shiki-tab>svg{display:block;width:1.25em!important;height:1.25em!important;min-width:1.25em;max-width:1.25em;flex:0 0 1.25em;margin:0 .7em 0 0}',
-            '.shiki-toolbar .shiki-tab>span{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-toolbar__tools .shiki-tab--search>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.shiki-toolbar .shiki-tab--active{background:rgba(255,255,255,.13);box-shadow:inset 0 -.16em 0 #efbd70;color:#fff}',
-            '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
-            '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8em;width:100%;max-width:100%;box-sizing:border-box;align-items:stretch}',
-            '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
-            '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
-            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
-            '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
-            '.shiki-card__poster img{display:block;width:100%;height:auto;aspect-ratio:2/3;max-width:100%;object-fit:contain;border-radius:.22em;background:rgba(255,255,255,.07)}',
-            '.shiki-card__body{display:block;flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box;padding:.55em .2em .25em;overflow:hidden}',
-            '.shiki-card__name{display:block;max-width:100%;font-size:1.02em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
-            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.25em 0 0;font-size:.78em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-card__meta{display:block;max-width:100%;margin-top:.35em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-card__meta-item{display:inline}',
-            '.shiki-card__meta-item+.shiki-card__meta-item:before{content:"·";display:inline-block;margin:0 .55em;color:rgba(255,255,255,.38)}',
-            '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
-            '.shiki-card__score{color:#f0c477;font-weight:700;white-space:nowrap}',
-            '.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.65);font-size:1em}',
-            '.shiki-more,.shiki-retry{grid-column:1/-1;display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.2em 0 .6em;cursor:pointer;font-weight:600}',
-            '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#fff;color:#111;outline:none}',
-            '.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}',
-            '.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}',
-            '.shiki-full__img{width:14em;height:20em;max-width:30vw;object-fit:cover;border-radius:.3em;display:block;background:rgba(255,255,255,.06)}',
-            '.shiki-full__info{flex:1;min-width:0;max-width:none}',
-            '.shiki-full__title{font-size:1.8em;margin:0 0 .15em;line-height:1.2;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-full__orig{font-size:1.05em;color:rgba(255,255,255,.55);margin:0 0 .7em;font-weight:normal}',
-            '.shiki-full__facts{margin-bottom:.6em;line-height:1.7}',
-            '.shiki-full__facts span{display:inline-block;background:rgba(255,255,255,.07);border-radius:.2em;padding:.2em .55em;margin:.15em .35em .15em 0;font-size:.9em}',
-            '.shiki-full__genres{margin-bottom:.8em}',
-            '.shiki-full__genres span{display:inline-block;color:rgba(255,255,255,.68);margin-right:.65em;font-size:.92em}',
-            '.shiki-full__actions{display:flex;flex-wrap:wrap;align-items:center;margin:.9em 0 1.1em}',
-            '.shiki-full__actions>*{margin:0 .7em .7em 0}',
-            '.shiki-full__actions .full-start__button{display:inline-flex;align-items:center}',
-            '.shiki-full__actions .full-start__button>svg{margin-right:.5em;flex-shrink:0}',
-            '.shiki-full__descr{margin:.9em 0;line-height:1.55;white-space:pre-line;color:rgba(255,255,255,.86)}',
-            '.shiki-full__alt{color:rgba(255,255,255,.52);font-size:.88em;margin-bottom:1.1em;line-height:1.4;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-section{margin-top:1.4em;width:100%;box-sizing:border-box}',
-            '.shiki-section__title{font-size:1.15em;font-weight:600;margin-bottom:.6em;color:#fff}',
-            '.shiki-shots{display:flex;flex-wrap:wrap}',
-            '.shiki-shots img{width:11em;height:6.2em;max-width:42vw;object-fit:cover;border-radius:.25em;background:rgba(255,255,255,.06);margin:0 .6em .6em 0}',
-            '.shiki-sublist{display:flex;flex-wrap:wrap;width:100%;box-sizing:border-box}',
-            '.shiki-subcard{flex:0 0 calc(50% - .45em);min-width:0;display:flex;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.25em;padding:.5em;align-items:center;cursor:pointer;margin:0 .45em .55em 0}',
-            '.shiki-subcard--more{cursor:pointer;background:rgba(255,255,255,.06)!important;opacity:1}',
-            '.shiki-subcard.selector--focus,.shiki-subcard.focus{background:#fff;color:#111;border-color:#fff;outline:none}',
-            '.shiki-subcard.selector--focus .shiki-subcard__sub,.shiki-subcard.focus .shiki-subcard__sub{color:rgba(0,0,0,.62)}',
-            '.shiki-subcard img{width:3.4em;height:4.8em;object-fit:cover;border-radius:.2em;flex-shrink:0;background:rgba(255,255,255,.06)}',
-            '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
-            '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
-            '@media (max-width:1400px){.shiki-list{grid-template-columns:repeat(4,minmax(0,1fr))}}',
-            '@media (max-width:900px){.shiki-list{grid-template-columns:repeat(3,minmax(0,1fr))}}',
-            '@media (max-width:600px){.shiki-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
-        ].join('')
-        $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
-    }
-
-    // ---------- Shikimori API (modular multi-host fallback + TTL cache) ----------
-    function getHostCandidates() {
-        var pref = (typeof Lampa !== 'undefined' && Lampa.Storage && Lampa.Storage.field)
-            ? Lampa.Storage.field('shikimori_host')
-            : 'auto'
-        var list = []
-        var i
-        if (pref && pref !== 'auto' && HOSTS.indexOf(pref) >= 0) {
-            list.push(pref)
-            for (i = 0; i < HOSTS.length; i++) {
-                if (HOSTS[i] !== pref) list.push(HOSTS[i])
-            }
-            return list
-        }
-        for (i = 0; i < HOSTS.length; i++) {
-            list.push(HOSTS[(hostIdx + i) % HOSTS.length])
-        }
-        return list
-    }
-
-    function createNetwork(timeoutMs) {
-        var net = new Lampa.Reguest()
-        var originalClear = net && typeof net.clear === 'function' ? net.clear : null
-        if (net) {
-            net._shikiCancelled = false
-            net.clear = function () {
-                net._shikiCancelled = true
-                if (originalClear) return originalClear.apply(net, arguments)
-            }
-        }
-        if (net && typeof net.timeout === 'function') {
-            net.timeout(timeoutMs || 12000)
-        }
-        return net
-    }
-
-    function isValidShikiPayload(res, opts) {
-        if (res === false || res === undefined || res === null) return false
-        if (opts && opts.expectArray) return Array.isArray(res)
-        if (opts && opts.expectObject) {
-            return typeof res === 'object' && !Array.isArray(res) && Boolean(res.id)
-        }
-        return true
-    }
-
-    function shikiRequest(net, pathAndQuery, success, failure, options) {
-        var opts = options || {}
-        var requestNet = net || createNetwork(12000)
-        if (requestNet && requestNet._shikiCancelled) return
-        var cacheKey = 'animes:' + pathAndQuery
-        if (!opts.noCache) {
-            var hit = cacheGet(cacheKey)
-            if (hit !== undefined && isValidShikiPayload(hit, opts)) {
-                success(hit)
-                return
-            }
-        }
-
-        var candidates = getHostCandidates()
-
-        function tryCandidate(idx) {
-            if (requestNet && requestNet._shikiCancelled) return
-            if (idx >= candidates.length) {
-                if (failure) failure()
-                return
-            }
-            var host = candidates[idx]
-            var url = host + '/api/animes' + pathAndQuery
-            try {
-                requestNet.silent(url, function (res) {
-                    if (requestNet && requestNet._shikiCancelled) return
-                    if (res === false || res === undefined || res === null) {
-                        tryCandidate(idx + 1)
-                        return
-                    }
-                    if (typeof res === 'object' && !Array.isArray(res)) {
-                        if (res.code === 404) {
-                            tryCandidate(idx + 1)
-                            return
-                        }
-                        if (res.error || res.retry_later) {
-                            tryCandidate(idx + 1)
-                            return
-                        }
-                    }
-                    if (!isValidShikiPayload(res, opts)) {
-                        tryCandidate(idx + 1)
-                        return
-                    }
-                    var foundIdx = HOSTS.indexOf(host)
-                    if (foundIdx >= 0) hostIdx = foundIdx
-                    var isEmptyArray = Array.isArray(res) && res.length === 0
-                    // Try the alternate Shikimori host before accepting an empty response.
-                    if (isEmptyArray && idx + 1 < candidates.length) {
-                        tryCandidate(idx + 1)
-                        return
-                    }
-                    if (!isEmptyArray) cacheSet(cacheKey, res)
-                    success(res)
-                }, function () {
-                    if (requestNet && requestNet._shikiCancelled) return
-                    tryCandidate(idx + 1)
-                }, null, { headers: { 'Accept': 'application/json' } })
-            } catch (e) {
-                tryCandidate(idx + 1)
-            }
-        }
-
-        tryCandidate(0)
-    }
-
-    function shikiCatalog(net, mode, keyword, page, success, failure, filters) {
-        var p = page || 1
-        var allowAdult = false
-        try {
-            allowAdult = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult'))
-        } catch (e) {}
-        var base = '?limit=' + PAGE + '&page=' + p + '&censored=' + (allowAdult ? 'false' : 'true')
-        var query
-        if (mode === 'search' && keyword) query = base + '&search=' + encodeURIComponent(keyword)
-        else query = base
-        var order = mode === 'top' ? 'ranked' : 'popularity'
-        if (mode === 'anons') query += '&status=anons'
-        else if (mode === 'ongoing') query += '&status=ongoing'
-        if (filters && typeof filters === 'object') {
-            if (filters.kind) query += '&kind=' + encodeURIComponent(filters.kind)
-            if (filters.status) { query = query.replace(/&status=[^&]*/g, ''); query += '&status=' + encodeURIComponent(filters.status) }
-            if (filters.season) query += '&season=' + encodeURIComponent(filters.season)
-            if (filters.score) query += '&score=' + encodeURIComponent(filters.score)
-            if (filters.duration) query += '&duration=' + encodeURIComponent(filters.duration)
-            if (filters.rating) query += '&rating=' + encodeURIComponent(filters.rating)
-            if (filters.genre) query += '&genre=' + encodeURIComponent(filters.genre)
-            if (filters.order) order = filters.order
-        }
-        query += '&order=' + encodeURIComponent(order)
-        shikiRequest(net, query, success, failure, { expectArray: true })
-    }
-
-    function shikiSearch(net, query, page, success, failure) {
-        shikiCatalog(net, 'search', query, page, success, failure)
-    }
-
-    function shikiDetails(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id), success, failure, { expectObject: true })
-    }
-
-    function shikiRelated(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id) + '/related', success, failure, { expectArray: true })
-    }
-
-    function shikiSimilar(net, id, success, failure) {
-        shikiRequest(net, '/' + encodeURIComponent(id) + '/similar', success, failure, { expectArray: true })
-    }
-
-    // ---------- TMDB lookup & scoring ----------
-    function tmdbApiKey() {
-        if (typeof Lampa !== 'undefined' && Lampa.TMDB && typeof Lampa.TMDB.key === 'function') {
-            return Lampa.TMDB.key()
-        }
-        return ''
-    }
-
-    function tmdbUrl(path, params) {
-        var base
-        try {
-            base = Lampa.TMDB.api(path)
-        } catch (e) {
-            base = 'https://api.themoviedb.org/3/' + path
-        }
-        var key = tmdbApiKey()
-        return base + (base.indexOf('?') >= 0 ? '&' : '?') +
-            (key ? 'api_key=' + encodeURIComponent(key) + '&' : '') +
-            'language=' + encodeURIComponent(lang()) + '&' + params
-    }
-
-    function tmdbSearch(net, name, type, cb) {
-        if (net && net._shikiCancelled) return
-        try {
-            net.silent(tmdbUrl('search/' + type, 'query=' + encodeURIComponent(name)), function (res) {
-                if (net && net._shikiCancelled) return
-                var arr = (res && Array.isArray(res.results)) ? res.results : []
-                var stamped = []
-                for (var i = 0; i < arr.length; i++) {
-                    var copy = {}
-                    for (var k in arr[i]) {
-                        if (Object.prototype.hasOwnProperty.call(arr[i], k)) copy[k] = arr[i][k]
-                    }
-                    copy.media_type = arr[i].media_type || type
-                    if (type !== 'multi' || copy.media_type === 'tv' || copy.media_type === 'movie') stamped.push(copy)
-                }
-                cb(stamped)
-            }, function () {
-                if (!(net && net._shikiCancelled)) cb([])
-            })
-        } catch (e) {
-            if (!(net && net._shikiCancelled)) cb([])
-        }
-    }
-
-    function isSubstrTitleMatch(a, b) {
-        if (!a || !b) return false
-        var minLen = Math.min(a.length, b.length)
-        var threshold = /[\u3400-\u9fff\uf900-\ufaff]/.test(a) || /[\u3400-\u9fff\uf900-\ufaff]/.test(b) ? 2 : 3
-        if (minLen < threshold) return false
-        return a.indexOf(b) >= 0 || b.indexOf(a) >= 0
-    }
-
-    function scoreTmdbCandidate(candidate, targetNorms, targetYear, targetKind) {
-        if (!candidate) return { score: -100, titleMatched: false, exactTitle: false }
-        var score = 0
-        var origNorm = normalize(candidate.original_title || candidate.original_name || '')
-        var locNorm = normalize(candidate.title || candidate.name || '')
-
-        var titleMatched = false
-        var exactTitle = false
-        for (var i = 0; i < targetNorms.length; i++) {
-            var tn = targetNorms[i]
-            if (!tn) continue
-            if (origNorm === tn || locNorm === tn) {
-                score += 60
-                titleMatched = true
-                exactTitle = true
-                break
-            }
-            if (isSubstrTitleMatch(origNorm, tn) || isSubstrTitleMatch(locNorm, tn)) {
-                score += 25
-                titleMatched = true
-            }
-        }
-
-        if (Array.isArray(candidate.genre_ids) && candidate.genre_ids.indexOf(16) >= 0) {
-            score += 30
-        }
-        if (candidate.original_language === 'ja' ||
-            (Array.isArray(candidate.origin_country) && candidate.origin_country.indexOf('JP') >= 0)) {
-            score += 25
-        }
-
-        var dateStr = candidate.first_air_date || candidate.release_date || ''
-        var candYear = dateStr ? parseInt(dateStr.substr(0, 4), 10) : 0
-        if (targetYear && candYear) {
-            var diff = Math.abs(targetYear - candYear)
-            if (diff === 0) score += 25
-            else if (diff === 1) score += 12
-            else if (diff <= 3) score += 4
-        }
-
-        if (targetKind) {
-            var wantMovie = targetKind === 'movie'
-            if ((wantMovie && candidate.media_type === 'movie') || (!wantMovie && candidate.media_type === 'tv')) {
-                score += 10
-            }
-        }
-
-        return { score: score, titleMatched: titleMatched, exactTitle: exactTitle }
-    }
-
-    function tmdbForAnime(animeOrOrig, maybeRussian, maybeCallback, optionalNet) {
-        var animeObj
-        var callback
-        var net
-        if (typeof animeOrOrig === 'object' && animeOrOrig !== null) {
-            animeObj = animeOrOrig
-            callback = maybeRussian
-            net = maybeCallback || createNetwork(12000)
-        } else {
-            animeObj = { name: animeOrOrig, russian: maybeRussian }
-            callback = maybeCallback
-            net = optionalNet || createNetwork(12000)
-        }
-
-        var englishTitles = Array.isArray(animeObj.english) ? animeObj.english : [animeObj.english]
-        var synonyms = Array.isArray(animeObj.synonyms) ? animeObj.synonyms : [animeObj.synonyms]
-        var engFirst = englishTitles[0] || ''
-        var primaryQueries = dedupeQueries([animeObj.name].concat(englishTitles, [animeObj.russian], synonyms))
-        if (!primaryQueries.length) {
-            callback([], false)
-            return
-        }
-
-        var fallbackQueries = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)).filter(function (q) {
-            var nq = normalize(q)
-            for (var i = 0; i < primaryQueries.length; i++) {
-                if (normalize(primaryQueries[i]) === nq) return false
-            }
-            return Boolean(nq)
-        })
-
-        var targetNorms = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).concat(
-            [animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)
-        )).map(normalize).filter(Boolean)
-
-        var targetYear = animeObj.aired_on ? parseInt(String(animeObj.aired_on).substr(0, 4), 10) : 0
-
-        function runBatch(queries, done) {
-            var qi = 0
-            var acc = []
-            var fails = 0
-            function next() {
-                if (qi >= queries.length || fails >= 3) {
-                    done(acc)
-                    return
-                }
-                var q = queries[qi++]
-                tmdbSearch(net, q, 'multi', function (results) {
-                    acc = acc.concat(results)
-                    if (!results.length) fails++
-                    else fails = 0
-                    next()
-                })
-            }
-            next()
-        }
-
-        function rankAndFinish(rawList) {
-            var seen = {}
-            var uniq = []
-            for (var i = 0; i < rawList.length; i++) {
-                var r = rawList[i]
-                var key = r.id + ':' + r.media_type
-                if (!seen[key]) {
-                    seen[key] = 1
-                    uniq.push(r)
-                }
-            }
-            if (!uniq.length) {
-                callback([], false)
-                return
-            }
-
-            var scored = uniq.map(function (r) {
-                var res = scoreTmdbCandidate(r, targetNorms, targetYear, animeObj.kind)
-                return { item: r, score: res.score, titleMatched: res.titleMatched, exactTitle: res.exactTitle }
-            })
-
-            scored.sort(function (a, b) { return b.score - a.score })
-
-            var matched = scored.filter(function (s) { return s.titleMatched })
-            var confidentSingle = matched.length === 1 && (matched[0].exactTitle || matched[0].score >= 65)
-            var chosen = (matched.length ? matched : scored.slice(0, 10)).map(function (s) { return s.item })
-            callback(chosen, confidentSingle)
-        }
-
-        runBatch(primaryQueries, function (firstBatch) {
-            var hasGoodMatch = false
-            for (var i = 0; i < firstBatch.length; i++) {
-                var check = scoreTmdbCandidate(firstBatch[i], targetNorms, targetYear, animeObj.kind)
-                if (check.titleMatched && check.score >= 60) {
-                    hasGoodMatch = true
-                    break
-                }
-            }
-            if (hasGoodMatch || !fallbackQueries.length) {
-                rankAndFinish(firstBatch)
-                return
-            }
-            runBatch(fallbackQueries, function (secondBatch) {
-                rankAndFinish(firstBatch.concat(secondBatch))
-            })
-        })
-    }
-
-    function gotoTmdbCard(movie) {
-        Lampa.Activity.push({
+    function processResults(response) {
+      var menu = [];
+      if (response.total_results !== undefined) {
+        // Обработка результата от поиска (search/multi)
+        if (response.total_results === 0) {
+          Lampa.Noty.show('Бядосе, обыскали все углы и ничего не нашли');
+        } else if (response.total_results === 1) {
+          Lampa.Activity.push({
             url: '',
             component: 'full',
-            id: movie.id,
-            method: movie.media_type === 'movie' ? 'movie' : 'tv',
-            card: movie,
-            source: 'tmdb',
-            page: 1
-        })
-    }
-
-    function openNativeTmdbSearch(title) {
-        var query = String(title || '').trim()
-        if (!query) {
-            Lampa.Noty.show(tr('shikimori_no_tmdb'))
-            return
-        }
-        // Use Lampa's own TMDB source as a fallback: it respects the app's
-        // configured TMDB proxy and native network handling.
-        Lampa.Activity.push({
-            url: 'search/multi?query=' + encodeURIComponent(query),
-            title: query,
-            component: 'category_full',
-            source: 'tmdb',
-            page: 1
-        })
-    }
-
-    function openTmdbResults(results, fallbackTitle, allowAutoOpen) {
-        if (!Array.isArray(results) || !results.length) {
-            openNativeTmdbSearch(fallbackTitle)
-            return
-        }
-        if (results.length === 1 && allowAutoOpen) {
-            gotoTmdbCard(results[0])
-            return
-        }
-        var items = results.map(function (r) {
-            var d = r.first_air_date || r.release_date || ''
-            var vote = r.vote_average ? Number(r.vote_average).toFixed(1) : '—'
-            var rawSubtitle = (r.original_title || r.original_name || '') + ' · ' +
-                (d ? d.substr(0, 4) : '—') + ' · ' +
-                (r.media_type === 'movie' ? tr('shikimori_movie') : tr('shikimori_series')) + ' · ' +
-                tr('shikimori_rate') + ' ' + vote
-            return {
-                title: esc(r.title || r.name || fallbackTitle || '?'),
-                subtitle: esc(rawSubtitle),
-                select: r
-            }
-        })
-        try {
-            if (Lampa.Select && typeof Lampa.Select.show === 'function') {
-                Lampa.Select.show({
-                    title: tr('shikimori_choose'),
-                    items: items,
-                    onSelect: function (item) {
-                        try { Lampa.Select.close() } catch (e) {}
-                        gotoTmdbCard(item.select)
-                    },
-                    onBack: function () {
-                        try { Lampa.Controller.toggle('content') } catch (e) {}
-                    }
-                })
-            } else {
-                openNativeTmdbSearch(fallbackTitle)
-            }
-        } catch (e) {
-            try { openNativeTmdbSearch(fallbackTitle) } catch (ee) {
-                try { Lampa.Noty.show(tr('shikimori_no_tmdb')) } catch (eee) {}
-            }
-        }
-    }
-
-    // ---------- controller helper (standard Lampa spatial navigation) ----------
-    function activateContentController(scroll, getLastFocused, setLastFocused) {
-        var container = scroll.render(true)
-
-        // Lampa's Scroll moves .scroll__body with transforms; Navigator.canmove()
-        // only reports focus-neighbours and can be false while content remains above.
-        // In that case, move focus to the nearest selector visually above and let
-        // Lampa.Scroll reveal it. Hand off to the head only at the real content edge.
-        function focusAboveCurrent() {
-            var current = getLastFocused && getLastFocused()
-            if (!current || !current.getBoundingClientRect) return false
-
-            var currentRect = current.getBoundingClientRect()
-            var currentCenter = currentRect.left + currentRect.width / 2
-            var candidates = $(container).find('.selector').toArray()
-            var best = null
-            var bestScore = Infinity
-
-            for (var i = 0; i < candidates.length; i++) {
-                var candidate = candidates[i]
-                if (candidate === current || !candidate.getBoundingClientRect) continue
-                var rect = candidate.getBoundingClientRect()
-                if (!rect.width || !rect.height) continue
-                var centerY = rect.top + rect.height / 2
-                if (centerY >= currentRect.top + currentRect.height / 2 - 2) continue
-
-                var verticalGap = Math.max(0, currentRect.top - rect.bottom)
-                var horizontalGap = Math.abs((rect.left + rect.width / 2) - currentCenter)
-                var score = verticalGap * 2 + horizontalGap
-                if (score < bestScore) {
-                    bestScore = score
-                    best = candidate
-                }
-            }
-
-            if (!best) return false
-            if (setLastFocused) setLastFocused(best)
-            try { Lampa.Controller.collectionFocus(best, container) } catch (e) {}
-            try { scroll.update(best, true) } catch (e) {}
-            return true
-        }
-
-        Lampa.Controller.add('content', {
-            toggle: function () {
-                Lampa.Controller.collectionSet(container)
-                Lampa.Controller.collectionFocus(getLastFocused() || false, container)
+            id: response.results[0].id,
+            method: response.results[0].media_type,
+            card: response.results[0]
+          });
+        } else if (response.total_results > 1) {
+          response.results.forEach(function (animeItem) {
+            menu.push({
+              title: "[".concat(animeItem.media_type.toUpperCase(), "] ").concat(animeItem.name ? animeItem.name : animeItem.title),
+              card: animeItem
+            });
+          });
+          Lampa.Select.show({
+            title: 'Find',
+            items: menu,
+            onBack: function onBack() {
+              Lampa.Controller.toggle("content");
             },
-            up: function () {
-                if (typeof Navigator !== 'undefined' && Navigator.canmove('up')) Navigator.move('up')
-                else if (!focusAboveCurrent()) Lampa.Controller.toggle('head')
-            },
-            down: function () {
-                if (typeof Navigator !== 'undefined' && Navigator.canmove('down')) Navigator.move('down')
-            },
-            left: function () {
-                if (typeof Navigator !== 'undefined' && Navigator.canmove('left')) Navigator.move('left')
-                else Lampa.Controller.toggle('menu')
-            },
-            right: function () {
-                if (typeof Navigator !== 'undefined' && Navigator.canmove('right')) Navigator.move('right')
-            },
-            back: function () {
-                if (Lampa.Activity.backward) Lampa.Activity.backward()
-                else Lampa.Activity.back()
-            }
-        })
-        Lampa.Controller.toggle('content')
-    }
-
-    // ---------- trailer playback ----------
-    function playYoutubeVideo(videoItem, allItems) {
-        if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('android') &&
-            Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('player_launch_trailers') === 'youtube' &&
-            Lampa.Android && Lampa.Android.openYoutube) {
-            try { Lampa.Android.openYoutube(videoItem.id); return } catch (e) {}
-        }
-        if (typeof YT !== 'undefined' && Lampa.YouTube && typeof Lampa.YouTube.play === 'function') {
-            try { Lampa.YouTube.play(videoItem.id); return } catch (e) {}
-        }
-        if (Lampa.Player && typeof Lampa.Player.play === 'function') {
-            try {
-                Lampa.Player.play({ title: videoItem.title, url: videoItem.url })
-                if (Lampa.Player.playlist && Array.isArray(allItems) && allItems.length > 1) {
-                    var playlist = allItems.map(function (t) { return { title: t.title, url: t.url } })
-                    try { Lampa.Player.playlist(playlist) } catch (ee) {}
-                }
-            } catch (e) {}
-        }
-    }
-
-    // ---------- search & catalog component ----------
-    function ShikimoriSearchComponent(object) {
-        var self = this
-        var html = $('<div class="shiki-search-wrap"></div>')
-        var net = createNetwork(12000)
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, end_ratio: 1 })
-        var page = 1
-        var hasMore = false
-        var loadingMore = false
-        var destroyed = false
-        var lastFocused = null
-
-        var keyword = (object && object.search) ? String(object.search).trim() : ''
-        var mode = (object && object.mode) ? object.mode : (keyword ? 'search' : 'ongoing')
-        var filters = (object && object.filters && typeof object.filters === 'object') ? object.filters : {}
-        var adultFilterEnabled = false
-        try { adultFilterEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
-        if (!adultFilterEnabled && filters.rating === 'rx') delete filters.rating
-        if (!adultFilterEnabled && String(filters.genre) === '12') delete filters.genre
-
-        function setLoader(active) {
-            if (self.activity && typeof self.activity.loader === 'function') {
-                self.activity.loader(active)
-                return
-            }
-            try {
-                if (active) html.addClass('shiki-local-loading')
-                else html.removeClass('shiki-local-loading')
-            } catch (e) {}
-        }
-
-        function bindFocusable(elements) {
-            elements.on('hover:focus', function () {
-                lastFocused = this
-                scroll.update(this, false)
-            }).on('hover:hover hover:touch mouseenter', function () {
-                lastFocused = this
-            })
-        }
-
-        function setupController() {
-            if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
-        }
-
-        function askKeyword() {
-            function onEdit(value) {
-                if (destroyed) return
-                var trimmed = (value || '').trim()
-                if (!trimmed) {
-                    setupController()
-                    return
-                }
-                Lampa.Activity.replace({ search: trimmed, mode: 'search', page: 1, filters: filters })
-            }
-            if (Lampa.Input && typeof Lampa.Input.edit === 'function') {
-                Lampa.Input.edit({
-                    title: tr('shikimori_input_title'),
-                    value: keyword,
-                    free: true,
-                    nosave: true
-                }, onEdit)
-            } else if (Lampa.Search && typeof Lampa.Search.show === 'function') {
-                Lampa.Search.show({
-                    title: tr('shikimori_input_title'),
-                    value: keyword,
-                    onSearch: onEdit,
-                    onBack: function () { setupController() }
-                })
-            } else {
-                // fallback: just focus controller if no input method
-                setupController()
-            }
-        }
-
-        function buildToolbar() {
-            var bar = $('<div class="shiki-toolbar"></div>')
-            var tools = $('<div class="shiki-toolbar__tools"></div>')
-            var searchLabel = keyword
-                ? (tr('shikimori_search_btn') + ': ' + keyword)
-                : tr('shikimori_search_btn')
-
-            var searchBtn = $('<div class="shiki-tab shiki-tab--search selector' + (mode === 'search' ? ' shiki-tab--active' : '') + '">' +
-                SEARCH_SVG + '<span>' + esc(searchLabel) + '</span></div>')
-            searchBtn.on('hover:enter', askKeyword)
-            tools.append(searchBtn)
-
-            var filterLabel = tr('shikimori_filters') + (hasActiveFilters() ? ' •' : '')
-            var filterBtn = $('<div class="shiki-tab shiki-tab--filter selector"><span>' + esc(filterLabel) + '</span></div>')
-            filterBtn.on('hover:enter', showFilterMenu)
-            tools.append(filterBtn)
-            bar.append(tools)
-
-            var tabsRow = $('<div class="shiki-toolbar__tabs"></div>')
-            var tabs = [
-                { id: 'ongoing', label: tr('shikimori_tab_ongoing') },
-                { id: 'popular', label: tr('shikimori_tab_popular') },
-                { id: 'top',     label: tr('shikimori_tab_top') },
-                { id: 'anons',   label: tr('shikimori_tab_anons') }
-            ]
-
-            tabs.forEach(function (t) {
-                var tab = $('<div class="shiki-tab shiki-tab--section selector' + (mode === t.id ? ' shiki-tab--active' : '') + '">' +
-                    '<span>' + esc(t.label) + '</span></div>')
-                tab.on('hover:enter', function () {
-                    if (mode === t.id && !keyword) return
-                    Lampa.Activity.replace({ search: '', mode: t.id, page: 1, filters: filters })
-                })
-                tabsRow.append(tab)
-            })
-            bar.append(tabsRow)
-
-            bindFocusable(bar.find('.selector'))
-            if (hasActiveFilters()) bar.append($('<div class="shiki-filter-summary"></div>').text(filterSummary()))
-            return bar
-        }
-
-        function hasActiveFilters() {
-            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.genre || filters.order)
-        }
-        function filterSummary() {
-            var parts = []
-            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + kindTitle(filters.kind))
-            if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
-            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + seasonTitle(filters.season))
-            if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
-            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + durationTitle(filters.duration))
-            if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
-            if (filters.genre) parts.push(tr('shikimori_filter_genre') + ': ' + genreTitle(filters.genre))
-            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + orderTitle(filters.order))
-            return parts.join('  ·  ')
-        }
-        function replaceFilters(next) {
-            filters = next
-            Lampa.Activity.replace({ search: keyword, mode: mode, page: 1, filters: filters })
-        }
-        function showFilterMenu() {
-            if (!Lampa.Select || typeof Lampa.Select.show !== 'function') { Lampa.Noty.show(tr('shikimori_filters')); return }
-            var adultEnabled = false
-            try { adultEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
-            var seasonValues = [['', tr('shikimori_filter_any')]]
-            var seasonNames = isRu()
-                ? [['winter', 'Зима'], ['spring', 'Весна'], ['summer', 'Лето'], ['fall', 'Осень']]
-                : [['winter', 'Winter'], ['spring', 'Spring'], ['summer', 'Summer'], ['fall', 'Fall']]
-            var currentYear = new Date().getFullYear()
-            for (var sy = currentYear; sy >= currentYear - 2; sy--) {
-                for (var ss = 0; ss < seasonNames.length; ss++) {
-                    seasonValues.push([seasonNames[ss][0] + '_' + sy, seasonNames[ss][1] + ' ' + sy])
-                }
-            }
-            for (var y = currentYear; y >= 1980; y--) seasonValues.push([String(y), String(y)])
-
-            var kindValues = [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['tv_13', 'TV · 13'], ['tv_24', 'TV · 24'], ['tv_48', 'TV · 48'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special'], ['tv_special', 'TV Special'], ['music', 'Music'], ['pv', 'PV'], ['cm', 'CM']]
-            var genreValues = [['', tr('shikimori_filter_any')]]
-            for (var gid = 1; gid <= 41; gid++) {
-                if (gid === 12 && !adultEnabled) continue
-                genreValues.push([String(gid), genreTitle(gid)])
-            }
-            var ratingValues = [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+']]
-            if (adultEnabled) ratingValues.push(['rx', 'Rx'])
-
-            var entries = [
-                { key: 'kind', title: tr('shikimori_filter_kind'), values: kindValues },
-                { key: 'status', title: tr('shikimori_filter_status'), values: [['', tr('shikimori_filter_any')], ['anons', tr('shikimori_anons')], ['ongoing', tr('shikimori_ongoing')], ['released', tr('shikimori_released_s')]] },
-                { key: 'season', title: tr('shikimori_filter_year'), values: seasonValues },
-                { key: 'genre', title: tr('shikimori_filter_genre'), values: genreValues },
-                { key: 'score', title: tr('shikimori_filter_score'), values: [['', tr('shikimori_filter_any')], ['5', '5+'], ['6', '6+'], ['7', '7+'], ['8', '8+'], ['9', '9+']] },
-                { key: 'duration', title: tr('shikimori_filter_duration'), values: [['', tr('shikimori_filter_any')], ['S', '< 10 ' + tr('shikimori_minutes')], ['D', '< 30 ' + tr('shikimori_minutes')], ['F', '30+ ' + tr('shikimori_minutes')]] },
-                { key: 'rating', title: tr('shikimori_filter_rating'), values: ratingValues },
-                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['ranked_shiki', isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking'], ['aired_on', isRu() ? 'Дата выхода' : 'Release date'], ['episodes', isRu() ? 'Количество серий' : 'Episode count'], ['name', 'A–Z'], ['status', isRu() ? 'Статус выхода' : 'Release status']] }
-            ]
-            var items = entries.map(function (entry) { return { title: entry.title + (filters[entry.key] ? ' · ' + filters[entry.key] : ''), subtitle: filters[entry.key] ? tr('shikimori_filter_active') : '', filterKey: entry.key } })
-            items.push({ title: tr('shikimori_filter_clear'), filterKey: '__clear' })
-            Lampa.Select.show({ title: tr('shikimori_filters'), items: items, onSelect: function (item) {
-                try { Lampa.Select.close() } catch (e) {}
-                if (item.filterKey === '__clear') { replaceFilters({}); return }
-                var entry = null
-                for (var i = 0; i < entries.length; i++) if (entries[i].key === item.filterKey) entry = entries[i]
-                if (!entry) return
-                Lampa.Select.show({ title: entry.title, items: entry.values.map(function (pair) { return { title: pair[1], subtitle: filters[entry.key] === pair[0] && pair[0] ? tr('shikimori_filter_active') : '', value: pair[0] } }), onSelect: function (choice) {
-                    try { Lampa.Select.close() } catch (e) {}
-                    var next = {}; for (var k in filters) if (Object.prototype.hasOwnProperty.call(filters, k)) next[k] = filters[k]
-                    if (choice.value) next[entry.key] = choice.value; else delete next[entry.key]
-                    replaceFilters(next)
-                }, onBack: showFilterMenu })
-            }, onBack: setupController })
-        }
-
-        function createCardElement(a) {
-            var primaryName = (isRu() && a.russian) ? a.russian : a.name
-            var showOrig = a.name && a.name !== primaryName
-            var scoreText = formatScore(a.score) || '—'
-            var epText = formatEpisodes(a)
-            var yearText = a.aired_on ? String(a.aired_on).substr(0, 4) : '—'
-
-            var metaParts = [
-                '<span class="shiki-card__meta-item shiki-card__kind">' + esc(kindTitle(a.kind)) + '</span>',
-                '<span class="shiki-card__meta-item">' + esc(yearText) + '</span>'
-            ]
-            if (epText) metaParts.push('<span class="shiki-card__meta-item">' + esc(epText) + '</span>')
-            metaParts.push('<span class="shiki-card__meta-item shiki-card__score">★ ' + esc(scoreText) + '</span>')
-
-            var item = $(
-                '<div class="shiki-card selector">' +
-                    '<div class="shiki-card__poster"><img class="shiki-poster-image" src="' + esc(posterOf(a, false)) + '" alt=""></div>' +
-                    '<div class="shiki-card__body">' +
-                        '<div class="shiki-card__name">' + esc(primaryName) + '</div>' +
-                        (showOrig ? '<div class="shiki-card__orig">' + esc(a.name) + '</div>' : '') +
-                        '<div class="shiki-card__meta">' + metaParts.join('') + '</div>' +
-                    '</div>' +
-                '</div>'
-            )
-            bindImgFallback(item, a, '.shiki-poster-image', false)
-            item.on('hover:enter', function () { pushDetails(a) })
-            bindFocusable(item)
-            return item
-        }
-
-        function appendCards(listContainer, animes) {
-            if (!Array.isArray(animes)) return null
-            var firstAdded = null
-            animes.forEach(function (a) {
-                if (!a || typeof a !== 'object') return
-                var card = createCardElement(a)
-                if (!firstAdded) firstAdded = card[0]
-                listContainer.append(card)
-            })
-            hasMore = animes.length >= PAGE
-            listContainer.find('.shiki-more').remove()
-            if (hasMore) {
-                var more = $('<div class="shiki-more selector">' + esc(tr('shikimori_load_more')) + '</div>')
-                more.on('hover:enter', function () { loadMore(true) })
-                bindFocusable(more)
-                listContainer.append(more)
-            }
-            return firstAdded
-        }
-
-        function loadMore(manualTrigger) {
-            if (loadingMore || !hasMore || destroyed) return
-            loadingMore = true
-            shikiCatalog(net, mode, keyword, page + 1, function (animes) {
-                loadingMore = false
-                if (destroyed) return
-                var listContainer = scroll.body().find('.shiki-list')
-
-                if (!Array.isArray(animes)) {
-                    Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
-                    Lampa.Controller.collectionSet(scroll.render(true))
-                    if (lastFocused && lastFocused.parentNode) {
-                        try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
-                    }
-                    return
-                }
-                if (!animes.length) {
-                    hasMore = false
-                    Lampa.Controller.collectionSet(scroll.render(true))
-                    if (lastFocused && lastFocused.parentNode) {
-                        try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
-                    }
-                    return
-                }
-                page++
-                var firstNew = appendCards(listContainer, animes)
-                Lampa.Controller.collectionSet(scroll.render(true))
-                // collectionSet may reset cursor on some Lampa builds — restore previous focus for auto-scroll
-                if (lastFocused && lastFocused.parentNode) {
-                    try { Lampa.Controller.collectionFocus(lastFocused, scroll.render(true)) } catch (e) {}
-                }
-                if (manualTrigger && firstNew) {
-                    lastFocused = firstNew
-                    try { Lampa.Controller.collectionFocus(firstNew, scroll.render(true)) } catch (e) {}
-                }
-            }, function () {
-                loadingMore = false
-                if (destroyed) return
-                Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
-            }, filters)
-        }
-
-        function drawInitial(animes, isError) {
-            if (destroyed) return
-            page = 1
-            hasMore = false
-            scroll.clear()
-            scroll.reset()
-
-            var toolbar = buildToolbar()
-            var listContainer = $('<div class="shiki-list"></div>')
-            scroll.append(toolbar)
-            scroll.append(listContainer)
-
-            if (isError || !Array.isArray(animes)) {
-                var retry = $('<div class="shiki-retry selector">' + esc(tr('shikimori_retry')) + '</div>')
-                retry.on('hover:enter', fetchFirstPage)
-                bindFocusable(retry)
-                listContainer.append('<div class="shiki-empty">' + esc(tr('shikimori_error')) + '</div>')
-                listContainer.append(retry)
-            } else if (!animes.length) {
-                listContainer.append('<div class="shiki-empty">' + esc(tr('shikimori_empty')) + '</div>')
-            } else {
-                appendCards(listContainer, animes)
-                var firstCard = listContainer.find('.shiki-card').first()[0]
-                if (firstCard) lastFocused = firstCard
-            }
-
-            setupController()
-        }
-
-        function fetchFirstPage() {
-            setLoader(true)
-            shikiCatalog(net, mode, keyword, 1, function (animes) {
-                setLoader(false)
-                drawInitial(animes, false)
-            }, function () {
-                setLoader(false)
-                Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
-                drawInitial([], true)
-            }, filters)
-        }
-
-        this.create = function () {
-            scroll.minus()
-            scroll.onEnd = function () {
-                loadMore(false)
-            }
-            html.append(scroll.render())
-            return html
-        }
-
-        this.start = function () {
-            if (scroll.body().children().length) {
-                setupController()
-                return
-            }
-            fetchFirstPage()
-        }
-
-        this.pause = function () {}
-        this.stop = function () {}
-        this.destroy = function () {
-            destroyed = true
-            net.clear()
-            scroll.destroy()
-            html.remove()
-        }
-        this.render = function () {
-            return html
-        }
-    }
-
-    // ---------- full details component ----------
-    function ShikimoriFullComponent(object) {
-        var self = this
-        var html = $('<div class="shiki-full-wrap"></div>')
-        var net = createNetwork(12000)
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 })
-        var loaded = false
-        var destroyed = false
-        var anime = null
-        var posterLookupCancel = null
-        var tmdbBusy = false
-        var tmdbNet = null
-        var tmdbLoading = false
-        var secondaryNets = []
-        var lastFocused = null
-
-        function setLoader(active) {
-            if (self.activity && typeof self.activity.loader === 'function') {
-                self.activity.loader(active)
-                return
-            }
-            try {
-                if (active) html.addClass('shiki-local-loading')
-                else html.removeClass('shiki-local-loading')
-            } catch (e) {}
-        }
-
-        function bindFocusable(elements) {
-            elements.on('hover:focus', function () {
-                lastFocused = this
-                scroll.update(this, false)
-            }).on('hover:hover hover:touch mouseenter', function () {
-                lastFocused = this
-            })
-        }
-
-        function setupController() {
-            if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
-        }
-
-        function renderSubSection(slot, titleText, entries, visibleLimit) {
-            if (destroyed || !entries || !entries.length) return
-            var limit = visibleLimit || 12
-            var sec = $('<div class="shiki-section"><div class="shiki-section__title">' + esc(titleText) + '</div><div class="shiki-sublist"></div></div>')
-            var grid = sec.find('.shiki-sublist')
-
-            entries.slice(0, limit).forEach(function (entry) {
-                var a = entry.anime
-                var name = (isRu() && a.russian) ? a.russian : a.name
-                var sub = entry.subtitle || [
-                    kindTitle(a.kind),
-                    a.aired_on ? String(a.aired_on).substr(0, 4) : '',
-                    formatScore(a.score) ? ('★ ' + formatScore(a.score)) : ''
-                ].filter(Boolean).join(' · ')
-
-                var card = $(
-                    '<div class="shiki-subcard selector">' +
-                        '<img class="shiki-poster-image" src="' + esc(posterOf(a, false)) + '" alt="">' +
-                        '<div class="shiki-subcard__body">' +
-                            '<div class="shiki-subcard__title">' + esc(name) + '</div>' +
-                            '<div class="shiki-subcard__sub">' + esc(sub) + '</div>' +
-                        '</div>' +
-                    '</div>'
-                )
-                bindImgFallback(card, a, '.shiki-poster-image', false)
-                card.on('hover:enter', function () { pushDetails(a) })
-                bindFocusable(card)
-                grid.append(card)
-            })
-            if (entries.length > limit) {
-                var more = $('<div class="shiki-subcard shiki-subcard--more selector"><div class="shiki-subcard__body"><div class="shiki-subcard__title">+ ' + esc(tr('shikimori_more')) + ' ' + (entries.length - limit) + '</div></div></div>')
-                more.on('hover:enter', function () {
-                    var nextLimit = Math.min(limit + 12, entries.length)
-                    renderSubSection(slot, titleText, entries, nextLimit)
-                    var target = slot.find('.shiki-subcard').eq(limit)[0]
-                    if (target) {
-                        lastFocused = target
-                        try {
-                            var collection = scroll.render(true)
-                            Lampa.Controller.collectionSet(collection)
-                            Lampa.Controller.collectionFocus(target, collection)
-                        } catch (e) {}
-                    }
-                })
-                bindFocusable(more)
-                grid.append(more)
-            }
-
-            slot.empty().append(sec)
-            // Related/similar cards arrive after the initial detail render; refresh Lampa's scroll bounds.
-            try { scroll.update(lastFocused || sec.find('.selector').first()[0] || sec[0], false) } catch (e) {}
-            var shikiCanAppend = false
-            try {
-                if (Lampa.Controller && Lampa.Controller.enabled) {
-                    var shikiEn = Lampa.Controller.enabled()
-                    shikiCanAppend = shikiEn && typeof shikiEn === 'object' && shikiEn.name === 'content'
-                }
-            } catch (e) {}
-            if (shikiCanAppend) {
-                try { Lampa.Controller.collectionAppend(sec.find('.selector')) } catch (e) {}
-            }
-        }
-
-        function loadSecondarySections(animeId, infoBox) {
-            var relatedSlot = $('<div class="shiki-related-slot"></div>')
-            var similarSlot = $('<div class="shiki-similar-slot"></div>')
-            infoBox.append(relatedSlot)
-            infoBox.append(similarSlot)
-
-            var relatedNet = createNetwork(12000)
-            var similarNet = createNetwork(12000)
-            secondaryNets.push(relatedNet, similarNet)
-
-            shikiRelated(relatedNet, animeId, function (relList) {
-                if (destroyed || !Array.isArray(relList)) return
-                var items = []
-                for (var i = 0; i < relList.length; i++) {
-                    var rel = relList[i]
-                    if (rel && rel.anime && rel.anime.id) {
-                        var relLabel = (isRu() && rel.relation_russian) ? rel.relation_russian : (rel.relation || '')
-                        var year = rel.anime.aired_on ? String(rel.anime.aired_on).substr(0, 4) : ''
-                        var subParts = [relLabel, kindTitle(rel.anime.kind), year].filter(Boolean)
-                        items.push({ anime: rel.anime, subtitle: subParts.join(' · ') })
-                    }
-                }
-                renderSubSection(relatedSlot, tr('shikimori_related'), items)
-            })
-
-            shikiSimilar(similarNet, animeId, function (simList) {
-                if (destroyed || !Array.isArray(simList)) return
-                var items = []
-                for (var i = 0; i < simList.length; i++) {
-                    if (simList[i] && simList[i].id && simList[i].id !== animeId) {
-                        items.push({ anime: simList[i] })
-                    }
-                }
-                renderSubSection(similarSlot, tr('shikimori_similar'), items)
-            })
-        }
-
-        function renderDetails(a) {
-            if (destroyed) return
-            anime = a
-            scroll.clear()
-            scroll.reset()
-
-            var highPoster = posterOf(a, true)
-            if (highPoster !== PLACEHOLDER && Lampa.Background && typeof Lampa.Background.immediately === 'function') {
-                try { Lampa.Background.immediately(highPoster) } catch (e) {}
-            }
-
-            var facts = []
-            if (a.kind) facts.push(kindTitle(a.kind))
-            if (a.status) facts.push(statusTitle(a.status))
-            var epStr = formatEpisodes(a)
-            if (epStr) facts.push(epStr)
-            if (a.duration && Number(a.duration) > 0) facts.push(a.duration + ' ' + tr('shikimori_minutes'))
-            var scoreStr = formatScore(a.score)
-            if (scoreStr) facts.push(tr('shikimori_score') + ': ' + scoreStr)
-            var ratingStr = formatRating(a.rating)
-            if (ratingStr) facts.push(tr('shikimori_rate') + ': ' + ratingStr)
-            if (a.aired_on) facts.push(tr('shikimori_released') + ': ' + a.aired_on)
-            if (Array.isArray(a.studios) && a.studios.length) {
-                var studioNames = a.studios.map(function (s) { return s && s.name }).filter(Boolean)
-                if (studioNames.length) facts.push(tr('shikimori_studios') + ': ' + studioNames.join(', '))
-            }
-
-            var genresHtml = (Array.isArray(a.genres) ? a.genres : []).map(function (g) {
-                if (!g) return ''
-                return '<span>#' + esc(isRu() && g.russian ? g.russian : g.name) + '</span>'
-            }).filter(Boolean).join(' ')
-
-            var altNames = dedupeQueries([].concat(a.english || [], a.japanese || [], a.synonyms || []))
-            var altText = altNames.length ? altNames.map(esc).join(', ') : '—'
-
-            var descr = cleanDescription(a.description || a.description_ru || '')
-            if (!descr) descr = tr('shikimori_no_descr')
-
-            var primaryTitle = (isRu() && a.russian) ? a.russian : a.name
-            var showOrig = a.name && a.name !== primaryTitle
-            var trailers = extractTrailers(a.videos)
-
-            var box = $(
-                '<div class="shiki-full">' +
-                    '<div class="shiki-full__poster"><img class="shiki-full__img shiki-poster-image" src="' + esc(highPoster) + '" alt=""></div>' +
-                    '<div class="shiki-full__info">' +
-                        '<h1 class="shiki-full__title">' + esc(primaryTitle) + '</h1>' +
-                        (showOrig ? '<h2 class="shiki-full__orig">' + esc(a.name) + '</h2>' : '') +
-                        '<div class="shiki-full__facts">' + facts.map(function (f) { return '<span>' + esc(f) + '</span>' }).join('') + '</div>' +
-                        (genresHtml ? '<div class="shiki-full__genres">' + genresHtml + '</div>' : '') +
-                        '<div class="shiki-full__actions">' +
-                            '<div class="full-start__button selector shiki-tmdb-btn">' + TMDB_SVG + '<span>' + esc(tr('shikimori_tmdb')) + '</span></div>' +
-                            (trailers.length ? '<div class="full-start__button selector shiki-trailer-btn">' + PLAY_SVG + '<span>' + esc(tr('shikimori_trailer')) + '</span></div>' : '') +
-                        '</div>' +
-                        '<div class="shiki-full__descr">' + esc(descr) + '</div>' +
-                        '<div class="shiki-full__alt">' + esc(tr('shikimori_alt_names')) + ': ' + altText + '</div>' +
-                    '</div>' +
-                '</div>'
-            )
-
-            bindImgFallback(box, a, '.shiki-full__img', true)
-            var infoBox = box.find('.shiki-full__info')
-
-            if (Array.isArray(a.screenshots) && a.screenshots.length) {
-                var shotsSec = $('<div class="shiki-section"><div class="shiki-section__title">' + esc(tr('shikimori_screenshots')) + '</div><div class="shiki-shots"></div></div>')
-                var shotsWrap = shotsSec.find('.shiki-shots')
-                a.screenshots.slice(0, 6).forEach(function (shot) {
-                    var shotUrl = resolveImageUrl(shot && (shot.preview || shot.original))
-                    if (shotUrl !== PLACEHOLDER) {
-                        shotsWrap.append('<img src="' + esc(shotUrl) + '" alt="" loading="lazy">')
-                    }
-                })
-                if (shotsWrap.children().length) {
-                    bindImgFallback(shotsWrap)
-                    infoBox.append(shotsSec)
-                }
-            }
-
-            box.find('.shiki-tmdb-btn').on('hover:enter', function () {
-                if (tmdbBusy || !anime) return
-                tmdbBusy = true
-                tmdbNet = createNetwork(12000)
-                var currentNet = tmdbNet
-                var cancelled = false
-                tmdbLoading = true
-                try {
-                    Lampa.Loading.start(function () {
-                        cancelled = true
-                        tmdbBusy = false
-                        try { currentNet.clear() } catch (e) {}
-                        if (tmdbNet === currentNet) tmdbNet = null
-                        if (tmdbLoading) {
-                            tmdbLoading = false
-                            try { Lampa.Loading.stop() } catch (ee) {}
-                        }
-                        if (!destroyed) setupController()
-                    })
-                } catch (e) {
-                    try { Lampa.Loading.start() } catch (ee) {}
-                }
-                tmdbForAnime(anime, function (results, confidentSingle) {
-                    if (cancelled || (currentNet && currentNet._shikiCancelled)) return
-                    if (tmdbLoading) {
-                        tmdbLoading = false
-                        try { Lampa.Loading.stop() } catch (e) {}
-                    }
-                    if (tmdbNet === currentNet) tmdbNet = null
-                    tmdbBusy = false
-                    if (destroyed) return
-                    openTmdbResults(results, anime.russian || anime.name, confidentSingle)
-                }, currentNet)
-            })
-
-            if (trailers.length) {
-                box.find('.shiki-trailer-btn').on('hover:enter', function () {
-                    if (trailers.length === 1) {
-                        playYoutubeVideo(trailers[0], trailers)
-                        return
-                    }
-                    Lampa.Select.show({
-                        title: tr('shikimori_trailer'),
-                        items: trailers.map(function (t) {
-                            return {
-                                title: esc(t.title),
-                                subtitle: esc(t.subtitle),
-                                video: t
-                            }
-                        }),
-                        onSelect: function (item) {
-                            Lampa.Select.close()
-                            setupController()
-                            playYoutubeVideo(item.video, trailers)
-                        },
-                        onBack: function () {
-                            setupController()
-                        }
-                    })
-                })
-            }
-
-            bindFocusable(box.find('.selector'))
-            lastFocused = box.find('.shiki-tmdb-btn')[0]
-
-            scroll.append(box)
-            setupController()
-            // Recalculate the scroll area after the complete details DOM is attached.
-            try { scroll.update(lastFocused || box.find('.selector').first()[0] || box[0], false) } catch (e) {}
-
-            if (a.id) {
-                loadSecondarySections(a.id, infoBox)
-            }
-        }
-
-        function renderError() {
-            if (destroyed) return
-            scroll.clear()
-            var errWrap = $('<div class="shiki-list"><div class="shiki-empty">' + esc(tr('shikimori_error')) + '</div></div>')
-            var retry = $('<div class="shiki-retry selector">' + esc(tr('shikimori_retry')) + '</div>')
-            retry.on('hover:enter', loadDetails)
-            bindFocusable(retry)
-            errWrap.append(retry)
-            lastFocused = retry[0]
-            scroll.append(errWrap)
-            setupController()
-        }
-
-        function loadHighQualityPoster(details) {
-            if (!details || !details.id) return
-            if (posterLookupCancel) {
-                try { posterLookupCancel() } catch (e) {}
-                posterLookupCancel = null
-            }
-
-            posterLookupCancel = fetchShikiPoster(details.id, function (url) {
-                posterLookupCancel = null
-                if (destroyed || !url || anime !== details) return
-
-                details.poster = details.poster || {}
-                details.poster.originalUrl = url
-                var candidates = posterCandidates(details, true)
-                if (!candidates.length) return
-
-                var image = html.find('.shiki-full__img').first()[0]
-                if (image) {
-                    image._shikiPosterCandidates = candidates
-                    image._shikiPosterIndex = 0
-                    image._shikiFallback = 0
-                    if (image.src !== candidates[0]) image.src = candidates[0]
-                }
-
-                if (Lampa.Background && typeof Lampa.Background.immediately === 'function') {
-                    try { Lampa.Background.immediately(candidates[0]) } catch (e) {}
-                }
-            })
-        }
-
-        function loadDetails() {
-            setLoader(true)
-            shikiDetails(net, object.anime_id, function (res) {
-                setLoader(false)
-                loaded = true
-                renderDetails(res)
-                loadHighQualityPoster(res)
-            }, function () {
-                setLoader(false)
-                Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
-                renderError()
-            })
-        }
-
-        this.create = function () {
-            scroll.minus()
-            html.append(scroll.render())
-            return html
-        }
-
-        this.start = function () {
-            if (loaded) {
-                setupController()
-                return
-            }
-            loadDetails()
-        }
-
-        this.pause = function () {}
-        this.stop = function () {}
-        this.destroy = function () {
-            destroyed = true
-            net.clear()
-            if (posterLookupCancel) {
-                try { posterLookupCancel() } catch (e) {}
-                posterLookupCancel = null
-            }
-            for (var ni = 0; ni < secondaryNets.length; ni++) {
-                try { secondaryNets[ni].clear() } catch (e) {}
-            }
-            secondaryNets = []
-            if (tmdbNet) {
-                try { tmdbNet.clear() } catch (e) {}
-                tmdbNet = null
-            }
-            tmdbBusy = false
-            if (tmdbLoading) {
-                tmdbLoading = false
-                try { Lampa.Loading.stop() } catch (e) {}
-            }
-            scroll.destroy()
-            html.remove()
-        }
-        this.render = function () {
-            return html
-        }
-    }
-
-    function pushDetails(a) {
-        if (!a || !a.id) return
-        try {
-            Lampa.Activity.push({
+            onSelect: function onSelect(a) {
+              Lampa.Activity.push({
                 url: '',
-                title: (isRu() && a.russian) ? a.russian : a.name,
-                component: 'shikimori_full',
-                anime_id: a.id,
-                page: 1
-            })
-        } catch (e) {}
-    }
-
-    // Resolve a TMDB card through ARM's TMDB -> MAL mapping, then match MAL IDs
-    // against Shikimori GraphQL results. MAL IDs are never passed as Shikimori IDs.
-    function matchShikiCandidatesByMalId(candidates, malIds, net, success, failure) {
-        if (!Array.isArray(candidates) || !candidates.length || !Array.isArray(malIds) || !malIds.length) {
-            if (typeof failure === 'function') failure()
-            return
-        }
-
-        var shikiIds = candidates.map(function (anime) {
-            return anime && anime.id ? String(anime.id) : ''
-        }).filter(Boolean)
-        if (!shikiIds.length || typeof $.ajax !== 'function') {
-            if (typeof failure === 'function') failure()
-            return
-        }
-
-        var hosts = getHostCandidates()
-        var hostIndex = 0
-        var query = 'query($ids: String!) { animes(ids: $ids, limit: 50) { id malId } }'
-
-        function tryHost() {
-            if (net && net._shikiCancelled) return
-            if (hostIndex >= hosts.length) {
-                if (typeof failure === 'function') failure()
-                return
+                component: 'full',
+                id: a.card.id,
+                method: a.card.media_type,
+                card: a.card
+              });
             }
-            var host = hosts[hostIndex++]
-            try {
-                $.ajax({
-                    url: host + '/api/graphql',
-                    method: 'POST',
-                    contentType: 'application/json; charset=utf-8',
-                    dataType: 'json',
-                    data: JSON.stringify({ query: query, variables: { ids: shikiIds.join(',') } }),
-                    timeout: 10000
-                }).done(function (response) {
-                    if (net && net._shikiCancelled) return
-                    var rows = response && response.data && Array.isArray(response.data.animes)
-                        ? response.data.animes
-                        : []
-                    var matched = null
-                    for (var i = 0; i < rows.length; i++) {
-                        var row = rows[i]
-                        if (!row || !row.id || !row.malId) continue
-                        if (malIds.indexOf(String(row.malId)) < 0) continue
-                        for (var j = 0; j < candidates.length; j++) {
-                            if (String(candidates[j].id) === String(row.id)) {
-                                matched = candidates[j]
-                                break
-                            }
-                        }
-                        if (matched) break
-                    }
-                    if (matched) {
-                        if (typeof success === 'function') success(matched)
-                    } else {
-                        tryHost()
-                    }
-                }).fail(function () {
-                    tryHost()
-                })
-            } catch (e) {
-                tryHost()
-            }
+          });
         }
-        tryHost()
-    }
-
-    // ---------- open from a foreign TMDB/Lampa card ----------
-    // ---------- open from a foreign TMDB/Lampa card ----------
-    function openShikimoriForCard(card) {
-        if (!card) {
-            Lampa.Noty.show(tr('shikimori_empty'))
-            return
-        }
-
-        // Lampa TV cards often represent the whole franchise, not an individual season.
-        // Search by base titles only; do not infer a season from the aggregated TMDB card.
-        var queries = dedupeQueries([
-            cleanCardTitle(card.title),
-            cleanCardTitle(card.name),
-            cleanCardTitle(card.original_title),
-            cleanCardTitle(card.original_name)
-        ])
-        if (!queries.length) {
-            Lampa.Noty.show(tr('shikimori_empty'))
-            return
-        }
-
-        var prevCtrl = 'content'
-        var prevActivity = null
-        try {
-            if (Lampa.Controller && Lampa.Controller.enabled) {
-                var enabledController = Lampa.Controller.enabled()
-                if (enabledController && typeof enabledController === 'object' && enabledController.name) {
-                    prevCtrl = enabledController.name
-                }
-            }
-        } catch (e) {}
-        try {
-            if (Lampa.Activity && typeof Lampa.Activity.active === 'function') prevActivity = Lampa.Activity.active()
-            else if (Lampa.Activity && Lampa.Activity.active) prevActivity = Lampa.Activity.active
-        } catch (e) {}
-
-        var modalNet = createNetwork(12000)
-        var cancelled = false
-        var mappingRequest = null
-
-        function stopLoading() {
-            try { Lampa.Loading.stop() } catch (e) {}
-        }
-
-        function canContinue() {
-            if (cancelled) return false
-            var active = null
-            try {
-                if (Lampa.Activity && typeof Lampa.Activity.active === 'function') active = Lampa.Activity.active()
-                else if (Lampa.Activity && Lampa.Activity.active) active = Lampa.Activity.active
-            } catch (e) {}
-            if (prevActivity && active && active !== prevActivity) {
-                cancelled = true
-                modalNet.clear()
-                if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
-                stopLoading()
-                return false
-            }
-            return true
-        }
-
-        function cancelSearch() {
-            cancelled = true
-            modalNet.clear()
-            if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
-            stopLoading()
-            if (prevCtrl) {
-                try { Lampa.Controller.toggle(prevCtrl) } catch (e) {}
-            }
-        }
-
-        try {
-            Lampa.Loading.start(cancelSearch)
-        } catch (e) {
-            try { Lampa.Loading.start() } catch (ee) {}
-        }
-
-        function showResults(results) {
-            if (!canContinue()) return
-            stopLoading()
-
-            if (!results.length) {
-                Lampa.Noty.show(tr('shikimori_empty'))
-                return
-            }
-            if (results.length === 1) {
-                pushDetails(results[0])
-                return
-            }
-
-            var items = results.map(function (anime) {
-                var score = formatScore(anime.score) || '—'
-                var year = anime.aired_on ? String(anime.aired_on).substr(0, 4) : '—'
-                return {
-                    title: esc((isRu() && anime.russian) ? anime.russian : anime.name),
-                    subtitle: esc(kindTitle(anime.kind) + ' · ' + year + ' · ★ ' + score),
-                    anime: anime
-                }
-            })
-
-            try {
-                Lampa.Select.show({
-                    title: tr('shikimori_choose'),
-                    items: items,
-                    onSelect: function (item) {
-                        try { Lampa.Select.close() } catch (e) {}
-                        pushDetails(item.anime)
-                    },
-                    onBack: function () {
-                        try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
-                    }
-                })
-            } catch (e) {
-                Lampa.Noty.show(tr('shikimori_empty'))
-            }
-        }
-
-        function finishWithMappedAnime(anime) {
-            if (!canContinue() || !anime || !anime.id) return
-            shikiDetails(modalNet, anime.id, function (details) {
-                if (!canContinue()) return
-                stopLoading()
-                pushDetails(details)
-            }, function () {
-                if (canContinue()) searchByBaseTitle()
-            })
-        }
-
-        function searchByBaseTitle(malIds) {
-            var gathered = []
-            var seen = {}
-            function tryQuery(index) {
-                if (!canContinue()) return
-                if (index >= queries.length) {
-                    if (malIds && malIds.length && gathered.length) {
-                        matchShikiCandidatesByMalId(gathered, malIds, modalNet, finishWithMappedAnime, function () {
-                            if (canContinue()) showResults(gathered)
-                        })
-                    } else {
-                        showResults(gathered)
-                    }
-                    return
-                }
-                shikiSearch(modalNet, queries[index], 1, function (animes) {
-                    if (!canContinue()) return
-                    if (Array.isArray(animes)) {
-                        animes.forEach(function (anime) {
-                            if (!anime || !anime.id || seen[String(anime.id)]) return
-                            seen[String(anime.id)] = true
-                            gathered.push(anime)
-                        })
-                    }
-                    tryQuery(index + 1)
-                }, function () {
-                    if (canContinue()) tryQuery(index + 1)
-                })
-            }
-            tryQuery(0)
-        }
-
-        function searchWithTmdbMapping() {
-            if (!card.id || typeof $.ajax !== 'function') {
-                searchByBaseTitle([])
-                return
-            }
-            try {
-                mappingRequest = $.ajax({
-                    url: 'https://arm.haglund.dev/api/v2/themoviedb?id=' + encodeURIComponent(card.id),
-                    method: 'GET',
-                    dataType: 'json',
-                    timeout: 10000
-                })
-                mappingRequest.done(function (mapped) {
-                    if (!canContinue()) return
-                    var malIds = []
-                    function addMalId(value) {
-                        var id = String(value || '').trim()
-                        if (/^\d+$/.test(id) && malIds.indexOf(id) < 0) malIds.push(id)
-                    }
-                    if (Array.isArray(mapped)) {
-                        mapped.forEach(function (item) { if (item) addMalId(item.myanimelist) })
-                    } else if (mapped && typeof mapped === 'object') {
-                        addMalId(mapped.myanimelist)
-                    }
-                    searchByBaseTitle(malIds)
-                }).fail(function () {
-                    if (canContinue()) searchByBaseTitle([])
-                })
-            } catch (e) {
-                searchByBaseTitle([])
-            }
-        }
-
-        // Lampa supplies a TMDB ID. Resolve it to MAL first, then compare that MAL ID
-        // with Shikimori's malId field; only the actual Shikimori ID is used for details.
-        searchWithTmdbMapping()
-    }
-
-    // ---------- menu item ----------
-    function openMainActivity() {
+      } else {
+        // Обработка результата от запроса по ID (movie/{id})
         Lampa.Activity.push({
-            url: '',
-            title: tr('shikimori'),
-            component: 'shikimori_search',
-            search: '',
-            mode: 'ongoing',
-            page: 1
-        })
+          url: '',
+          component: 'full',
+          id: response.id,
+          method: response.number_of_episodes ? 'tv' : 'movie',
+          card: response
+        });
+      }
     }
+  }
+  var API = {
+    main: main,
+    search: search
+  };
 
-    function addMenuItem() {
-        var useNativeAdd = Lampa.Menu && typeof Lampa.Menu.addButton === 'function'
+  function Card(data, userLang) {
+    var formattedSeason = data.season ? data.season.replace('_', ' ').replace(/^\w/, function (c) {
+      return c.toUpperCase();
+    }) : '';
+    function capitalizeFirstLetter(string) {
+      if (!string) return string; // Проверка на пустую строку или null/undefined
+      return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+    var item = Lampa.Template.get("LMEShikimori-Card", {
+      img: data.poster.originalUrl,
+      type: data.kind.toUpperCase(),
+      status: capitalizeFirstLetter(data.status),
+      rate: data.score,
+      title: userLang === 'ru' ? data.russian || data.name || data.japanese : data.name || data.japanese,
+      //seasonID: data.season,
+      //seasonID: data.season !== null ? data.season : data.airedOn.year, // Проверка на null
+      season: data.season !== null ? formattedSeason : data.airedOn.year // Проверка на null,
+    });
+    /**
+    if (!formattedSeason) {
+        $(item).find('.LMEShikimori.card__season').addClass('no-season');
+    }
+    **/
+    this.render = function () {
+      return item;
+    };
+    this.destroy = function () {
+      item.remove();
+    };
+  }
 
-        function menuHasOurs() {
-            if ($('.menu .shikimori-menu-item').length) return true
-            var found = false
-            try {
-                $('.menu .menu__text').each(function () {
-                    if ($(this).text() === tr('shikimori')) { found = true; return false }
-                })
-            } catch (e) {}
-            return found
+  function Component$1(object) {
+    var userLang = Lampa.Storage.field('language');
+    var network = new Lampa.Reguest();
+    var scroll = new Lampa.Scroll({
+      mask: true,
+      over: true,
+      step: 250
+    });
+    var items = [];
+    var html = $("<div class='LMEShikimori-module'></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
+    var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
+    var active, last;
+
+    //Start
+    this.create = function () {
+      API.main(object, this.build.bind(this), this.empty.bind(this));
+    };
+
+    //Build
+    this.build = function (result) {
+      var _this = this;
+      //Scroll
+      scroll.minus();
+      scroll.onWheel = function (step) {
+        if (!Lampa.Controller.own(_this)) _this.start();
+        if (step > 0) Navigator.move('down');else Navigator.move('up');
+      };
+      scroll.onEnd = function () {
+        // Используем стрелочную функцию здесь
+        object.page++;
+        API.main(object, _this.build.bind(_this), _this.empty.bind(_this));
+      };
+      this.headeraction();
+      //Put Data
+      this.body(result);
+
+      //Put blank
+      scroll.append(head);
+      scroll.append(body);
+
+      //Put all in page
+      html.append(scroll.render(true));
+      this.activity.loader(false);
+      this.activity.toggle();
+    };
+    this.headeraction = function () {
+      var settings = {
+        "url": "https://shikimori.one/api/genres",
+        "method": "GET",
+        "timeout": 0
+      };
+      var filters = {};
+      $.ajax(settings).done(function (response) {
+        var filteredResponse = response.filter(function (item) {
+          return item.entry_type === "Anime";
+        });
+        var modifiedResponse = filteredResponse.map(function (item) {
+          return _objectSpread2(_objectSpread2({}, item), {}, {
+            title: item.name,
+            name: undefined // Удаляем старый ключ name
+          });
+        });
+        filters.kind = {
+          title: 'Genre',
+          items: modifiedResponse
+        };
+      });
+      filters.AnimeKindEnum = {
+        title: 'Type',
+        items: [{
+          title: "TV Series",
+          code: "tv"
+        }, {
+          title: "Movie",
+          code: "movie"
+        }, {
+          title: "OVA",
+          code: "ova"
+        }, {
+          title: "ONA",
+          code: "ona"
+        }, {
+          title: "Special",
+          code: "special"
+        }, {
+          title: "TV Special",
+          code: "tv_special"
+        }, {
+          title: "Music",
+          code: "music"
+        }, {
+          title: "PV",
+          code: "pv"
+        }, {
+          title: "CM",
+          code: "cm"
+        }]
+      };
+      filters.status = {
+        title: 'Status',
+        items: [{
+          title: "Planned",
+          code: "anons"
+        }, {
+          title: "Airing",
+          code: "ongoing"
+        }, {
+          title: "Released",
+          code: "released"
+        }]
+      };
+      filters.sort = {
+        title: 'Sort',
+        items: [{
+          title: "By ID",
+          code: "id"
+        }, {
+          title: "id_desc",
+          code: "id_desc"
+        }, {
+          title: "By rank",
+          code: "ranked"
+        }, {
+          title: "By type",
+          code: "kind"
+        }, {
+          title: "By popularity",
+          code: "popularity"
+        }, {
+          title: "In alphabetical order",
+          code: "name"
+        }, {
+          title: "By release date",
+          code: "aired_on"
+        }, {
+          title: "By number of episodes",
+          code: "episodes"
+        }, {
+          title: "By status",
+          code: "status"
+        }, {
+          title: "By random",
+          code: "random"
+        }, {
+          title: "By random",
+          code: "ranked_random"
+        }, {
+          title: "By Shikimori ranking",
+          code: "ranked_shiki"
+        }, {
+          title: "created_at",
+          code: "created_at"
+        }, {
+          title: "created_at_desc",
+          code: "created_at_desc"
+        }]
+      };
+      /** Season Range **/
+      function getCurrentSeason() {
+        var now = new Date();
+        var month = now.getMonth();
+        var year = now.getFullYear();
+        var seasons = ['winter', 'spring', 'summer', 'fall'];
+        var seasonIndex = (month + 1) % 12 === 0 ? 0 : Math.floor((month + 1) / 3); // Визначення індексу сезону
+        return "".concat(seasons[seasonIndex], "_").concat(month === 11 ? year + 1 : year);
+      }
+      function generateDynamicSeasons() {
+        var now = new Date();
+        var seasons = new Set([getCurrentSeason()]);
+
+        // Додаємо наступні три сезони
+        for (var i = 1; i <= 3; i++) {
+          var nextDate = new Date(now);
+          nextDate.setMonth(now.getMonth() + 3 * i);
+          seasons.add(getCurrentSeason());
+        }
+        return Array.from(seasons); // Перетворюємо Set назад в масив
+      }
+      function generateYearRanges() {
+        var currentYear = new Date().getFullYear();
+        var ranges = [];
+
+        // Генеруємо діапазони по 10 років
+        for (var startYear = currentYear; startYear >= 2000; startYear -= 10) {
+          var endYear = Math.max(startYear - 9, 2000);
+          ranges.push("".concat(endYear, "_").concat(startYear));
         }
 
-        function appendToMenuDom(root) {
-            var scope = root || $('.menu')
-            var list = scope.find('.menu__list').eq(0)
-            if (!list.length || menuHasOurs()) return
-            var btn = $(
-                '<li class="menu__item selector shikimori-menu-item">' +
-                    '<div class="menu__ico">' + ICON_SVG + '</div>' +
-                    '<div class="menu__text">' + esc(tr('shikimori')) + '</div>' +
-                '</li>'
-            )
-            btn.on('hover:enter', openMainActivity)
-            list.append(btn)
-        }
+        // Додаємо статичні діапазони для старіших років
+        ranges.push("199x", "198x", "ancient");
+        return ranges;
+      }
+      function generateSeasonJSON() {
+        var dynamicSeasons = generateDynamicSeasons();
+        var yearRanges = generateYearRanges();
+        var allSeasons = _toConsumableArray(new Set([].concat(_toConsumableArray(dynamicSeasons), _toConsumableArray(yearRanges))));
+        return allSeasons.map(function (season) {
+          return {
+            "code": season,
+            "title": season.replace(/_/g, '-') // Замінюємо підкреслення на пробіли для читабельності
+          };
+        });
+      }
 
-        if (useNativeAdd) {
-            if (!menuHasOurs()) {
-                try { Lampa.Menu.addButton(ICON_SVG, tr('shikimori'), openMainActivity) } catch (e) {}
+      // Приклад використання
+      //console.log(generateSeasonJSON());
+      filters.seasons = {
+        title: 'Season',
+        items: generateSeasonJSON()
+      };
+      var serverElement = head.find('.LMEShikimori__search');
+      function queryForShikimori() {
+        var query = {};
+        filters.AnimeKindEnum.items.forEach(function (a) {
+          if (a.selected) query.kind = a.code;
+        });
+        filters.status.items.forEach(function (a) {
+          if (a.selected) query.status = a.code;
+        });
+        filters.kind.items.forEach(function (a) {
+          if (a.selected) query.genre = a.id;
+        });
+        filters.sort.items.forEach(function (a) {
+          if (a.selected) query.sort = a.code;
+        });
+        filters.seasons.items.forEach(function (a) {
+          if (a.selected) query.seasons = a.code;
+        });
+        return query;
+      }
+      function selected(where) {
+        var title = [];
+        where.items.forEach(function (a) {
+          if (a.selected || a.checked) title.push(a.title);
+        });
+        where.subtitle = title.length ? title.join(', ') : Lampa.Lang.translate('nochoice');
+      }
+      function select(where, a) {
+        where.forEach(function (element) {
+          element.selected = false;
+        });
+        a.selected = true;
+      }
+      function submenu(item, main) {
+        Lampa.Select.show({
+          title: item.title,
+          items: item.items,
+          onBack: main,
+          onSelect: function onSelect(a) {
+            select(item.items, a);
+            main();
+          }
+        });
+      }
+      function mainMenu() {
+        for (var i in filters) selected(filters[i]);
+        Lampa.Select.show({
+          title: 'Filters',
+          items: [{
+            title: Lampa.Lang.translate('search_start'),
+            searchShikimori: true
+          }, filters.status, filters.AnimeKindEnum, filters.kind, filters.sort, filters.seasons],
+          onBack: function onBack() {
+            Lampa.Controller.toggle("content");
+          },
+          onSelect: function onSelect(a) {
+            if (a.searchShikimori) {
+              search();
+            } else submenu(a, mainMenu);
+          }
+        });
+      }
+      function search() {
+        var query = queryForShikimori();
+        var params = {
+          url: '',
+          title: 'Shikimori',
+          component: 'LMEShikimori',
+          page: 1
+        };
+
+        // Добавляем параметры только если они существуют
+        if (query.kind) {
+          params.kind = query.kind;
+        }
+        if (query.status) {
+          params.status = query.status;
+        }
+        if (query.genre) {
+          params.genre = query.genre;
+        }
+        if (query.sort) {
+          params.sort = query.sort;
+        }
+        if (query.seasons) {
+          params.seasons = query.seasons;
+        }
+        Lampa.Activity.push(params);
+      }
+      serverElement.on('hover:enter', function () {
+        mainMenu();
+      });
+      var homeElement = head.find('.LMEShikimori__home');
+      homeElement.on('hover:enter', function () {
+        Lampa.Activity.push({
+          url: '',
+          title: 'Shikimori',
+          component: 'LMEShikimori',
+          page: 1
+        });
+      });
+    };
+    this.empty = function () {
+      var empty = new Lampa.Empty();
+      html.appendChild(empty.render(true));
+      this.start = empty.start;
+      this.activity.loader(false);
+      this.activity.toggle();
+    };
+
+    //Catalog build
+    this.body = function (data) {
+      data.forEach(function (anime) {
+        var item = new Card(anime, userLang);
+        item.render(true).on("hover:focus", function () {
+          last = item.render()[0];
+          active = items.indexOf(item);
+          scroll.update(items[active].render(true), true);
+        }).on("hover:enter", /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+          return _regenerator().w(function (_context) {
+            while (1) switch (_context.n) {
+              case 0:
+                API.search(anime);
+              case 1:
+                return _context.a(2);
             }
-        } else {
-            appendToMenuDom()
-            Lampa.Listener.follow('menu', function (e) {
-                if (!e || e.type === 'ready') appendToMenuDom(e && e.body ? e.body : null)
-            })
-        }
+          }, _callee);
+        })));
+        body.append(item.render(true));
+        items.push(item);
+      });
+    };
+    this.start = function () {
+      if (Lampa.Activity.active().activity !== this.activity) return;
+      Lampa.Controller.add("content", {
+        toggle: function toggle() {
+          Lampa.Controller.collectionSet(scroll.render());
+          Lampa.Controller.collectionFocus(last || false, scroll.render());
+        },
+        left: function left() {
+          if (Navigator.canmove("left")) Navigator.move("left");else Lampa.Controller.toggle("menu");
+        },
+        right: function right() {
+          Navigator.move("right");
+        },
+        up: function up() {
+          if (Navigator.canmove("up")) Navigator.move("up");else Lampa.Controller.toggle("head");
+        },
+        down: function down() {
+          if (Navigator.canmove("down")) Navigator.move("down");
+        },
+        back: this.back
+      });
+      Lampa.Controller.toggle("content");
+    };
+    this.pause = function () {};
+    this.stop = function () {};
+    this.render = function (js) {
+      return js ? html : $(html);
+    };
+    this.destroy = function () {
+      network.clear();
+      Lampa.Arrays.destroy(items);
+      scroll.destroy();
+      html.remove();
+      items = null;
+      network = null;
+    };
+  }
+
+  function Component() {
+    Lampa.Listener.follow("full", /*#__PURE__*/function () {
+      var _ref = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(e) {
+        var getMAL, response, dubbers, subbers, shikimoriRates, _t;
+        return _regenerator().w(function (_context) {
+          while (1) switch (_context.p = _context.n) {
+            case 0:
+              if (!(e.type === "complite")) {
+                _context.n = 6;
+                break;
+              }
+              _context.p = 1;
+              _context.n = 2;
+              return $.ajax({
+                url: "https://arm.haglund.dev/api/v2/themoviedb?id=".concat(e.object.id),
+                method: "GET",
+                timeout: 0
+              });
+            case 2:
+              getMAL = _context.v;
+              if (getMAL.length) {
+                _context.n = 3;
+                break;
+              }
+              console.warn("No data found for the provided ID.");
+              return _context.a(2);
+            case 3:
+              _context.n = 4;
+              return $.ajax({
+                url: "https://shikimori.one/api/animes/".concat(getMAL[0].myanimelist),
+                method: "GET",
+                timeout: 0
+              });
+            case 4:
+              response = _context.v;
+              dubbers = "\n                    <div class=\"full-descr__info\">\n                        <div class=\"full-descr__info-name\">Fan Dubbers</div>\n                        <div class=\"full-descr__text\">".concat(response.fandubbers.join(', '), "</div>\n                    </div>");
+              subbers = "\n                    <div class=\"full-descr__info\">\n                        <div class=\"full-descr__info-name\">Fan Subbers</div>\n                        <div class=\"full-descr__text\">".concat(response.fansubbers.join(', '), "</div>\n                    </div>");
+              e.object.activity.render().find(".full-descr__right").append(dubbers, subbers);
+              shikimoriRates = "<div class=\"full-start__rate rate--shikimori\"><div>".concat(response.score, "</div><div>Shikimori</div></div>");
+              e.object.activity.render().find(".full-start-new__rate-line").prepend(shikimoriRates);
+              _context.n = 6;
+              break;
+            case 5:
+              _context.p = 5;
+              _t = _context.v;
+              console.error("Error fetching data:", _t);
+            case 6:
+              return _context.a(2);
+          }
+        }, _callee, null, [[1, 5]]);
+      }));
+      return function (_x) {
+        return _ref.apply(this, arguments);
+      };
+    }());
+  }
+
+  function add() {
+    var button = $("<li class=\"menu__item selector\">\n            <div class=\"menu__ico\">\n                <svg fill=\"currentColor\" viewBox=\"0 0 24 24\" role=\"img\" xmlns=\"http://www.w3.org/2000/svg\" stroke=\"\"><g id=\"SVGRepo_bgCarrier\" stroke-width=\"0\"></g><g id=\"SVGRepo_tracerCarrier\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></g><g id=\"SVGRepo_iconCarrier\"><title>Shikimori icon</title><path d=\"M2.8025.0025C2.7779.03 2.8332.1223 2.9834.3c.0981.1134.1594.2328.233.4444.0551.1594.1198.3157.1443.3464.0368.049.0396.037.0427-.1102V.8181l.218.3004c.331.4568.5365.6992.6744.7973.0706.046.1136.0919.0952.098-.049.0153-.4785-.2208-.6778-.374-.1012-.0767-.196-.1411-.2114-.1411-.0153 0-.0644-.0461-.1073-.1013-.0399-.0552-.1348-.1408-.2053-.1898-.1717-.1196-.3527-.2913-.3957-.374C2.763.7721 2.668.7323 2.668.7814c0 .049.245.377.435.5793.5825.6224 1.1776.932 2.7688 1.4287.3373.1043.6347.2085.6623.233.0246.0215.0737.0398.1074.0398.0306 0 .0795.0152.104.0305.0399.0245.0367.031-.0093.031-.0368 0-.0521.018-.046.0548.0092.0552.1595.1045.4477.1444.1287.0184.1593.0124.1593-.0244 0-.049-.0889-.083-.2207-.083-.049 0-.0858-.0151-.0858-.0304 0-.0184.031-.025.0708-.0188.0368.0092.1652.0306.2817.052.276.046.353.0768.353.135 0 .0644.0826.092.1377.046.0307-.0276.046-.0274.046-.0028 0 .0183.0151.0337.0304.0337.0184 0 .031-.0214.031-.046 0-.0582-.0309-.0586.4842.0212.3066.046.42.077.374.0923-.098.0368-.0428.0858.0952.0858.0705 0 .1195.0153.1195.0337 0 .0276.0704.0306.2452.0183.1594-.0123.2516-.0093.2639.0122.0122.0184.0643.0275.1195.0183.0521-.0092.1961.0034.3126.0248.3066.0583 1.1313.1044 2.977.1688 2.983.1042 5.157.3277 5.9726.6159.3617.1287.9075.4048 1.0087.509.1594.1686.2082.3066.1898.5334-.0092.1135-.0092.2149 0 .2241.089.089.2855-.0859.2855-.2545 0-.0338.0639-.1165.1467-.187.331-.2913.3803-.454.3436-1.1194-.0246-.4476-.031-.4782-.2302-1.1343-.2606-.8585-.3215-.9903-.6342-1.3214-.3679-.3863-.7023-.6072-1.1592-.7635-.1103-.0368-.3434-.1224-.5212-.1899-.2483-.098-.4262-.141-.788-.1931-.512-.0736-1.6126-.1256-1.956-.0919-.1226.0123-.6132 0-1.1498-.0337-.61-.0337-.984-.046-1.0729-.0277-.0766.0154-.2085.0274-.2944.0305-.1257 0-.1837.0187-.291.0984-.1257.092-.2149.1194-.5644.1777-.5641.092-.929.1653-1.0823.2175-.1196.0429-.3157.0706-.6192.089-.8309.0521-1.3029.0952-1.4071.129-.0706.0214-.3406.0274-.7913.0182-.5488-.0123-.6895-.006-.7171.0277-.0276.0306-.0155.0398.0581.0398.1809 0 1.7968.1258 1.8121.141.0154.0154-.273.003-1.0977-.0491-.2423-.0154-.4567-.0186-.472-.0094-.0583.0368-.4939.0307-.9108-.0122-.515-.0521-1.0115-.138-1.4714-.2545-.2146-.0521-.4662-.0916-.644-.1008-.328-.0153-.6778-.129-1.1714-.3773-.325-.1625-.3614-.1684-.3614-.0366v.1008L3.244.5331c-.0552-.0644-.1224-.1689-.15-.2302-.0552-.1165-.2609-.328-.2915-.3004zm.4584 3.1887c-.5697.0269-1.0938.4707-1.47 1.2628-.2238.4752-.2635.6593-.2789 1.291-.0122.4966-.0063.598.0642 1.0119.1503.8615.19.9625.5058 1.2721.3342.3312 1.1654.785 1.6284.8892.1594.0338.3464.0768.4139.0952.2575.0644.61.0885 1.4868.1008.8431.0153.9136.0125 1.027-.0427.0797-.0398.2486-.0707.4908-.089.2023-.0184.4165-.0459.4748-.0643.0582-.0153.1841-.0309.276-.0309.0951 0 .1903-.0182.2087-.0366.0735-.0735.4228-.1503.757-.1687.187-.0092.3621-.0273.3928-.0427.1011-.0551.052-.0859-.1135-.0675-.095.0092-.187.003-.2207-.0154-.0491-.0307-.034-.0335.0825-.0366.0766 0 .2269-.0093.3342-.0216.1655-.0153.1842-.0248.1382-.0585-.1134-.0828-.0153-.1041.4936-.1041.4568 0 .5886-.0215.4537-.0736-.0275-.0092-.1413-.0216-.2517-.0216-.1134-.003-.1624-.0119-.1134-.015.0521-.006.1628-.0277.2517-.043.0859-.0185.6255-.0399 1.1958-.046.5702-.0061 1.0542-.0124 1.0757-.0155.0276 0 .0338-.0215.0216-.0614-.0123-.043-.0061-.061.0276-.061.0245 0 .083-.049.129-.1073.0919-.1195.1161-.1137.156.0427l.0277.1012.2207.0094c.1748.0061.2333-.003.2916-.046.0398-.0306.1224-.0645.1837-.0768l.1135-.0216-.0183.1782c-.0184.144-.0152.1716.0215.1593.0246-.0092.1222-.0338.2203-.0553l.1749-.0337-.0675-.089c-.043-.0491-.1226-.098-.1931-.1163l-.1224-.031.1838-.006a4.812 4.812 0 0 1 .3004 0c.0644.003.1135-.0089.1135-.0272 0-.0184-.0182-.034-.0366-.037-.0215-.0031-.089-.0064-.1472-.0095-.0582-.006-.1564-.0398-.2147-.0735-.0582-.0368-.1317-.067-.1593-.067-.0307 0-.0553-.0157-.0553-.031 0-.0215.092-.0305.2545-.0244.2483.0092.2514.0091.2606.0919.0123.095.0122.095.0797.0675a.0498.0498 0 0 0 .0305-.0581c-.0184-.049.037-.0893.083-.0586.0183.0092.0918.0215.1593.0276.1655.0092.9718.0737 1.1803.0952.1103.0122.1593.0307.1593.0614 0 .0521.037.0549.083.0089.0245-.0245.1442-.021.4354.0066.3557.0337.4017.0425.4017.0946 0 .0368.0213.0556.0704.0586.0368 0 .1656.0121.2821.0244.1196.0123.2329.0181.2513.009.0214-.0062.0891-.0979.1504-.2021.1196-.1993.2208-.3253.2607-.3253.0153 0 .018.0219.0089.0464-.0123.0245-.003.046.0154.046.0215 0 .0338.0244.0277.052-.0061.0367.0213.0582.0919.0735.1134.0246.1657.0582.089.0582-.0276 0-.0525.0183-.0525.0398 0 .0215.1812.0984.4448.1842.2821.095.4444.1623.4444.1899 0 .0306-.095.0092-.3586-.0797-.6254-.2146-.898-.2606-.898-.1533 0 .046.0488.0676.285.1228.1532.0368.3002.0642.3248.0642.0214 0 .0798.0338.1289.0736.049.043.294.144.5638.233.273.092.5153.19.5644.233.049.0398.1349.0952.1931.1166.1932.0828.4693.3309.6778.6099.3005.4047.2973.3895.1317.3895-.0766 0-.2946-.0214-.4847-.046-.19-.0245-.429-.0461-.53-.0492-.2147-.0061-1.9684.0278-2.6245.0493l-.4449.0154-.0703-.1504c-.0398-.0828-.1533-.2298-.2545-.331-.1747-.1717-.1837-.175-.2236-.1167-.0245.0337-.1168.1626-.2057.2822l-.1622.2236-.1992.0065c-.1104 0-.2242.0031-.2517 0-.0675-.006-.0703.0305-.009.144l.0427.0857-.3126.0216c-.8524.0582-2.661.282-3.268.4078-.135.0276-.4203.049-.6778.052-.46.0061-.5028.0184-.794.187-.0522.0276-.0922.0339-.129.0155-.0337-.0215-.0643-.0154-.0858.0122-.0337.0398-.144.058-.9534.1439-.1778.0184-.475.0584-.665.089-.3312.0552-.3499.0552-.5246 0-.184-.0582-.7572-.135-1.2478-.1687l-.276-.0216-.1622.1472c-.092.0797-.218.2177-.2855.3066-.092.1257-.141.166-.1992.166-.1257 0-1.2448.1743-2.0573.3215-.8768.1594-1.2077.1904-1.4652.1382-.2668-.0551-.2701-.0583-.2578-.3956.0122-.2851.0093-.2941-.0643-.3309-.1686-.0858-.331-.0371-.5517.1622-.052.046-.1133.0675-.1992.0675-.0705-.003-.1993.0306-.3004.0797l-.181.083.009.1593c.006.0858-.0032.1868-.0216.2175-.0245.0368-.0306.1994-.0183.4692.0123.328.003.4476-.0398.607l-.052.1964.1471.2086c.2943.4139.503.7294.503.763 0 .0185.0916.1169.208.218.506.4446.7207.5642 1.2174.6685.5273.1134.6131.1072.9412-.0675.1502-.0828.3251-.1965.3895-.2578.0797-.0736.3067-.1931.742-.3863.6776-.3004.7631-.3342.7631-.2943 0 .0122.043.426.0952.9135.1073 1.024.1411 2.0052.0951 2.7595-.0368.5917-.0644.6743-.4814 1.4591-.6469 1.2172-1.4224 2.3947-2.008 3.0477-.1043.1196-.2636.325-.3525.4599-.1686.2544-.4815.595-.871.9445-.1317.1195-.2177.2206-.2085.2451.0092.0245.1046.0734.2119.1102.1042.0398.2052.083.2236.0984.049.049.1101.0303.337-.0924l.2207-.1223.0891.0614c.1073.0705.3006.0763.4631.015.0644-.0245.1932-.052.2883-.0581.19-.0184.3126-.0703.5118-.2236.0736-.0552.1687-.1073.2147-.1195.089-.0184.8585-.7976 1.2694-1.2881.1287-.1502.4506-.4905.7204-.7542.3771-.374.5457-.5148.7603-.6436.3096-.184.5548-.4076.5854-.5395.0123-.046.052-.1413.0919-.2118.095-.1625.2024-.5792.1748-.6835-.0092-.0429-.0552-.147-.1012-.233-.0797-.141-.0855-.1901-.1008-.5826-.0276-.6898-.138-1.0515-.4875-1.5941-.2023-.3127-.2516-.4231-.3773-.8278-.2085-.696-.2697-1.3493-.1655-1.8613.049-.2545.0735-.2883.279-.4078.1072-.0644.2484-.1656.3159-.227l.1256-.1162.5948-.0675c.328-.0398.6958-.0889.8123-.1134.1196-.0245.3831-.0797.5855-.1195.2054-.043.497-.1164.6473-.1655.1502-.0521.3616-.1137.472-.1383.2146-.049.9472-.1192.9717-.0946.0092.0092.0185.4476.0155.975 0 .8277-.0092 1.0515-.0797 1.6616-.1196 1.0455-.1442 1.3732-.1749 2.526-.0276 1.1466-.0365 1.1986-.2236 1.3335-.1349.0981-.2728.0802-.6806-.1007-.2023-.089-.6286-.264-.9505-.3928-.3189-.1288-.7727-.3277-1.0027-.4411-.233-.1165-.4232-.2028-.4232-.1936 0 .0092.1165.1595.2606.3342.144.1748.2606.325.2606.3342 0 .0092-.0274.0188-.0642.0188-.0552 0-.0584.006-.0155.0642.0276.0398.0369.101.0277.1654-.0123.0828-.0032.1106.058.1505.04.0276.1046.1041.1445.1716.0368.0643.1012.147.141.1776.04.0307.098.1044.1318.1627.0306.0582.1348.1654.233.239.098.0736.193.1687.2113.2086.0184.046.1077.1133.2119.1655.2422.1226.5975.4353.6557.5732.0338.0859.1015.1534.2977.2822.1564.1042.4321.3433.7387.6469.558.5518.5887.5703 1.0425.5427.2943-.0214.4416-.0768.6164-.2362.0705-.0644.1563-.1316.187-.15.0306-.0184.1072-.1072.1655-.1992.0582-.095.147-.1932.193-.2208.1288-.0766.3587-.402.3587-.5062 0-.1533.0582-.251.2606-.441.1778-.1656.2149-.2213.3253-.4941.1717-.417.2326-.6864.2878-1.223.0674-.6622.0616-1.4623-.015-1.962-.1257-.8156-.604-3.0876-.7481-3.5414-.1196-.377-.233-.8676-.233-1.0087 0-.0337.064-.0369.3155-.0215.23.0153.4108.0094.6745-.0305.3127-.046.4202-.049.7514-.0183.2115.0184.3923.0396.3984.0488.0245.0214.4968 1.5575.5765 1.8702.1656.6408.1688.687.2025 2.2996.0153.8431.0304 1.8426.0366 2.2228.0061.6407.0124.7111.089.9932.0981.3587.2054.5919.4261.9108.089.1257.2238.3464.3005.4874.1533.2852.3527.521.6103.7172.3372.2606.6652.4724.8676.5644.2422.1103.4382.2849.6314.5577.0797.1104.1932.2609.2545.3375.0613.0767.1378.1932.1716.2607.0582.1226.0766.1348.4078.233.1532.0459.5762.0548.8123.015.1318-.0216.1812-.052.3928-.2574.285-.276.42-.469.42-.607 0-.2146.0303-.279.156-.3281.0798-.0307.1196-.0673.1196-.1041 0-.1932-.2023-.9723-.3066-1.1747-.0674-.1349-.9471-1.324-1.686-2.2836-.7849-1.0148-1.061-1.4567-1.2234-1.935-.0521-.1624-.2481-1.2754-.3708-2.143-.0889-.6224-.2608-1.2386-.5306-1.9223-.092-.233-.1564-.4228-.141-.4228.0735 0 1.6526.4415 1.7445.4875.0583.0307.2974.159.5274.2878.23.1318.4537.2363.4935.2363.046 0 .239.1073.466.2606l.3895.2606.2025-.0155c.2912-.0276.346-.0398.4687-.1256.1748-.1196.2792-.138.4172-.0736.2667.1257.4507.1472.2883.0338-.2422-.1687-.2667-.2516-.1257-.4632.1687-.2575.1867-.2757.3614-.3646.279-.141.2976-.1745.3895-.6774.043-.2452.1011-.4848.1257-.5338.0705-.1472.0553-.2419-.0642-.3553-.0614-.0583-.1627-.1904-.2302-.2916-.095-.1472-.1223-.2175-.1223-.3248 0-.1196-.0124-.144-.1013-.1992a1.3114 1.3114 0 0 0-.218-.1074c-.1318-.046-.3369-.2635-.3093-.3248a2.3155 2.3155 0 0 0 .0337-.083c.0246-.0613-.2239-.1962-.4692-.2545-.2452-.0582-.2421-.0583-.1992-.1073.0215-.0276.0212-.1227.0028-.3005-.092-.84-.4321-1.4285-.9993-1.7259-.1226-.0644-.2299-.1288-.239-.1471-.0583-.089-.7818-.365-1.1803-.4477-.1257-.0245-.3744-.0857-.5522-.1378-.1778-.049-.4504-.1016-.6098-.12-.4568-.043-1.073-.147-1.2754-.2114-.1012-.0307-.3403-.0858-.5335-.1195-.1931-.0368-.3587-.0766-.368-.0919-.0122-.0184-.0858-.0156-.187.0028-.1164.0215-.2912.0217-.5671-.0028-.2177-.0215-.7573-.034-1.1957-.031-.6745.0031-.8585-.0057-1.2019-.0609-.2207-.0368-.518-.0646-.659-.0646-.3373-.0031-1.331-.1042-1.1531-.1196.0276 0 .1195-.0181.2053-.0365.141-.0307.1504-.0372.1228-.0985-.0306-.0644-.0458-.0673-.478-.0642-.368 0-.4539.0094-.4815.0492-.0306.0399-.0615.0428-.1964.0183-.144-.0306-.1533-.0368-.1073-.0736.049-.0368.0492-.046.0094-.0736-.0246-.0153-.0676-.031-.0952-.031-.0399 0-1.9562-.19-2.7533-.2727-.1564-.0184-.2941-.0365-.3033-.0488-.0092-.0092.0061-.0154.0337-.0154.0307 0 .052-.0124.052-.0277 0-.046-.156-.058-.3707-.0244-.1502.0215-.2303.0213-.2794-.0032-.0582-.0246-.0395-.0273.0924-.015.2912.0306.1683-.0401-.1383-.077-.1656-.0214-.3372-.043-.3801-.0491a.486.486 0 0 1-.1379-.046c-.0306-.0184-.3679-.0763-.748-.1284-.3802-.0521-.8065-.1291-.9506-.172-.4967-.141-.9532-.371-1.2169-.607l-.1382-.1224.0492-.1167c.1011-.2422.2299-.3832.4598-.4936.3158-.1533.46-.178 1.0762-.1964.561-.0122.693-.0365.6286-.1101-.0307-.043-.472-.1106-.6928-.1106-.138 0-.4815-.0674-.7973-.1594a1.2257 1.2257 0 0 0-.4003-.0488zm8.8497 2.9503a.3051.3051 0 0 0-.0675.0051c-.181.0307-.285.0734-.3769.15l-.0919.0736.1472.0033c.1564 0 .239-.0306.3525-.1317.0713-.0644.0838-.0963.0366-.1003zm5.7762.951c.0383-.0023.0814.0089.1626.0319.092.0276.193.0401.2236.031.0307-.0093.0674-.0033.0797.0182.0153.0276-.0305.0308-.1838.0155-.1349-.0154-.2025-.0126-.2025.0089 0 .0184.0368.04.0858.0492.2238.049.2607.0737.0675.0553-.1103-.0123-.276-.0213-.368-.0244-.1594 0-.1684.003-.1776.0797-.0092.0705-.0307.0856-.181.1163-.2053.0398-.1775.0428-.3308-.0277-.138-.0674-.4418-.141-.819-.1992-.141-.0215-.2112-.0396-.1621-.0427.0521 0 .3342.0307.6286.0736.5457.0767.6988.0919.6651.0582-.0092-.0092-.2483-.0644-.5334-.1196l-.5151-.1012.3004-.0033c.2637-.003.3098.0064.3895.0647.0675.049.1011.0583.1256.0337.0215-.0214.1133-.028.2574-.0187.1931.0153.2452.0095.3525-.0488.0628-.0322.0966-.0483.135-.0506zm-4.3466.5128c.0152-.0005.0284.0022.036.0099.0124.0092.0002.0306-.0243.0459-.0582.0368-.0828.037-.1073.0033-.0138-.0253.0499-.0575.0956-.059zm4.9869.09c.0057-.002.0158.0105.0342.0366.0214.0276.0673.052.098.052.049 0 .0524.006.0126.0305-.0245.0153-.0522.0276-.0614.0276-.0613-.0061-.0919-.0428-.0919-.098.0015-.0306.0027-.0468.0085-.0487zm-3.9515.1805c-.0613 0-.104.052-.104.1256 0 .0153.0702.0276.156.0276.1472 0 .1536-.003.1168-.052-.0613-.0797-.0983-.1012-.1688-.1012zm6.1901 1.8304c.0215-.0092.0738.012.1167.0426.0675.0521.0674.0584.0122.0553-.0858 0-.184-.0765-.1289-.098Z\"></path></g></svg>\n            </div>\n            <div class=\"menu__text\">Shikimori</div>\n        </li>");
+    button.on("hover:enter", function () {
+      Lampa.Activity.push({
+        url: '',
+        title: 'Shikimori',
+        component: 'LMEShikimori',
+        page: 1
+      });
+    });
+    $(".menu .menu__list").eq(0).append(button);
+  }
+  function startPlugin() {
+    window.plugin_shikimori_ready = true;
+    var manifest = {
+      type: "other",
+      version: "0.1",
+      name: "LME Shikimori",
+      description: "Add Shikimori catalogue",
+      component: "LMEShikimori"
+    };
+    Lampa.Manifest.plugins = manifest;
+    //Set Style and Template
+    Lampa.Template.add('LMEShikimoriStyle', "<style>\n            .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori.card__type{background:#ff4242;color:#fff}.LMEShikimori .card__season{position:absolute;left:-0.8em;top:3.4em;padding:.4em .4em;background:#05f;color:#fff;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori .card__status{position:absolute;left:-0.8em;bottom:1em;padding:.4em .4em;background:#ffe216;color:#000;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori.card__season.no-season{display:none}\n        </style>");
+    Lampa.Template.add("LMEShikimori-Card", "<div class=\"LMEShikimori card selector layer--visible layer--render\">\n                <div class=\"LMEShikimori card__view\">\n                    <img src=\"{img}\" class=\"LMEShikimori card__img\" />\n                    <div class=\"LMEShikimori card__type\">{type}</div>\n                    <div class=\"LMEShikimori card__vote\">{rate}</div>\n                    <div class=\"LMEShikimori card__season\">{season}</div>\n                    <div class=\"LMEShikimori card__status\">{status}</div>\n                </div>\n                <div class=\"LMEShikimori card__title\">{title}</div>\n            </div>");
+    Lampa.Component.add(manifest.component, Component$1);
+    //Set Franchise for FullCard
+    Component();
+    //Set menu
+    $('body').append(Lampa.Template.get('LMEShikimoriStyle', {}, true));
+    if (window.appready) add();else {
+      Lampa.Listener.follow("app", function (e) {
+        if (e.type === "ready") add();
+      });
     }
+  }
+  if (!window.plugin_shikimori_ready) startPlugin();
 
-    // ---------- settings ----------
-    function addSettings() {
-        if (!Lampa.SettingsApi) return
-        Lampa.SettingsApi.addComponent({
-            component: 'shikimori',
-            icon: ICON_SVG,
-            name: 'Shikimori'
-        })
-        Lampa.SettingsApi.addParam({
-            component: 'shikimori',
-            param: { name: 'shikimori_context', type: 'trigger', default: true },
-            field: { name: tr('shikimori_context_menu') }
-        })
-        Lampa.SettingsApi.addParam({
-            component: 'shikimori',
-            param: { name: 'shikimori_button', type: 'trigger', default: false },
-            field: { name: tr('shikimori_full_button') }
-        })
-        Lampa.SettingsApi.addParam({
-            component: 'shikimori',
-            param: { name: 'shikimori_anime_only', type: 'trigger', default: true },
-            field: { name: tr('shikimori_anime_only') }
-        })
-        Lampa.SettingsApi.addParam({
-            component: 'shikimori',
-            param: { name: 'shikimori_adult', type: 'trigger', default: false },
-            field: { name: tr('shikimori_adult') }
-        })
-        Lampa.SettingsApi.addParam({
-            component: 'shikimori',
-            param: {
-                name: 'shikimori_host',
-                type: 'select',
-                values: {
-                    auto: tr('shikimori_host_auto'),
-                    'https://shikimori.one': 'shikimori.one',
-                    'https://shikimori.io': 'shikimori.io'
-                },
-                default: 'auto'
-            },
-            field: { name: tr('shikimori_host_label') }
-        })
-    }
-
-    // ---------- Shikimori ratings on native Lampa cards ----------
-    var shikiRatingQueue = []
-    var shikiRatingBusy = false
-
-    // Resolve the same TMDB -> MAL -> Shikimori chain as the working reference plugin.
-    function lookupShikiByTmdbId(tmdbId, success, failure) {
-        var cancelled = false
-        var mappingRequest = null
-        var detailNet = null
-        var cacheKey = 'shiki-tmdb-id:' + String(tmdbId || '')
-        var cached = tmdbId ? cacheGet(cacheKey) : undefined
-
-        function cancel() {
-            cancelled = true
-            if (mappingRequest && typeof mappingRequest.abort === 'function') {
-                try { mappingRequest.abort() } catch (e) {}
-            }
-            if (detailNet) detailNet.clear()
-        }
-
-        function fail() {
-            if (cancelled) return
-            if (detailNet) detailNet.clear()
-            if (typeof failure === 'function') failure()
-        }
-
-        if (cached && cached.id) {
-            if (typeof success === 'function') success(cached)
-            return cancel
-        }
-        if (!tmdbId || typeof $.ajax !== 'function') {
-            fail()
-            return cancel
-        }
-
-        try {
-            mappingRequest = $.ajax({
-                url: 'https://arm.haglund.dev/api/v2/themoviedb?id=' + encodeURIComponent(tmdbId),
-                method: 'GET',
-                dataType: 'json',
-                timeout: 10000
-            })
-            mappingRequest.done(function (mapped) {
-                if (cancelled) return
-                var ids = []
-                function addId(value) {
-                    var id = String(value || '').trim()
-                    if (/^\d+$/.test(id) && ids.indexOf(id) < 0) ids.push(id)
-                }
-                if (Array.isArray(mapped)) {
-                    mapped.forEach(function (item) {
-                        if (item) addId(item.myanimelist)
-                    })
-                } else if (mapped && typeof mapped === 'object') {
-                    addId(mapped.myanimelist)
-                }
-                if (!ids.length) {
-                    fail()
-                    return
-                }
-
-                detailNet = createNetwork(12000)
-                var index = 0
-                function tryMappedId() {
-                    if (cancelled) return
-                    if (index >= ids.length) {
-                        fail()
-                        return
-                    }
-                    shikiDetails(detailNet, ids[index++], function (anime) {
-                        if (cancelled) return
-                        if (anime && anime.id) {
-                            cacheSet(cacheKey, anime)
-                            detailNet.clear()
-                            if (typeof success === 'function') success(anime)
-                        } else {
-                            tryMappedId()
-                        }
-                    }, tryMappedId)
-                }
-                tryMappedId()
-            }).fail(function () {
-                fail()
-            })
-        } catch (e) {
-            fail()
-        }
-
-        return cancel
-    }
-
-    function lampaCardTitles(data) {
-        if (!data || typeof data !== 'object') return []
-        return dedupeQueries([
-            cleanCardTitle(data.title),
-            cleanCardTitle(data.name),
-            cleanCardTitle(data.original_title),
-            cleanCardTitle(data.original_name),
-            cleanCardTitle(data.originalTitle),
-            cleanCardTitle(data.originalName)
-        ])
-    }
-
-    function findExactShikiAnime(results, titles, year) {
-        if (!Array.isArray(results)) return null
-        var wanted = titles.map(normalize).filter(Boolean)
-        var best = null
-        var bestMatch = 0
-        for (var i = 0; i < results.length; i++) {
-            var anime = results[i]
-            if (!anime) continue
-            var aliases = [anime.name, anime.russian]
-                .concat(Array.isArray(anime.english) ? anime.english : [anime.english])
-                .concat(Array.isArray(anime.synonyms) ? anime.synonyms : [anime.synonyms])
-            var names = dedupeQueries(aliases.concat(aliases.map(cleanCardTitle))).map(normalize).filter(Boolean)
-            var matchScore = 0
-            for (var n = 0; n < wanted.length; n++) {
-                if (!wanted[n]) continue
-                for (var j = 0; j < names.length; j++) {
-                    if (wanted[n] === names[j]) matchScore = Math.max(matchScore, 100)
-                    else if (isSubstrTitleMatch(wanted[n], names[j])) matchScore = Math.max(matchScore, 60)
-                }
-            }
-            if (!matchScore) continue
-            var animeYear = anime.aired_on ? parseInt(String(anime.aired_on).substr(0, 4), 10) : 0
-            // Do not reject a sequel because an aggregated Lampa franchise card starts in season 1.
-            if (year && animeYear && year === animeYear) matchScore += 15
-            if (matchScore > bestMatch) {
-                var score = formatScore(anime.score)
-                if (score && anime.id) {
-                    bestMatch = matchScore
-                    best = { score: score, id: anime.id }
-                }
-            }
-        }
-        return best
-    }
-
-    function attachShikiRating(job, result) {
-        if (!job || !result || !job.render) return
-        var root = $(job.render)
-        if (root.find('.rate--shikimori').length) return
-        var score = formatScore(result.score)
-        if (!score) return
-
-        var rating = $('<div class="full-start__rate rate--shikimori"><div>' +
-            esc(score) + '</div><div>Shikimori</div></div>')
-        var line = root.find('.full-start-new__rate-line').first()
-        if (line.length) {
-            // Same placement and markup as the working reference plugin.
-            line.prepend(rating)
-            return
-        }
-
-        job.attachTries = (job.attachTries || 0) + 1
-        if (job.attachTries <= 8) {
-            setTimeout(function () { attachShikiRating(job, result) }, 250)
-            return
-        }
-
-        // Older full-card layouts can still show the rating beside the info row.
-        var info = root.find('.info__rate').first()
-        if (info.length) info.after(rating)
-    }
-
-    function processShikiRatingQueue() {
-        if (shikiRatingBusy || !shikiRatingQueue.length) return
-        shikiRatingBusy = true
-        var job = shikiRatingQueue.shift()
-        var key = 'shiki-rating:' + String(job.tmdbId || '') + ':' + normalize(job.titles[0] || '')
-        var cached = cacheGet(key)
-
-        function finish(result) {
-            if (result && !result.notFound && formatScore(result.score)) {
-                cacheSet(key, result)
-                attachShikiRating(job, result)
-            } else {
-                cacheSet(key, { notFound: true })
-            }
-            shikiRatingBusy = false
-            setTimeout(processShikiRatingQueue, 180)
-        }
-
-        if (cached !== undefined) {
-            finish(cached)
-            return
-        }
-
-        function fallbackByTitle() {
-            if (!job.titles.length) {
-                finish(null)
-                return
-            }
-            var net = createNetwork(10000)
-            var index = 0
-            function tryTitle() {
-                if (index >= job.titles.length) {
-                    net.clear()
-                    finish(null)
-                    return
-                }
-                var title = job.titles[index++]
-                shikiSearch(net, title, 1, function (results) {
-                    var found = findExactShikiAnime(results, job.titles, job.year)
-                    if (found) {
-                        net.clear()
-                        finish(found)
-                    } else {
-                        tryTitle()
-                    }
-                }, tryTitle)
-            }
-            tryTitle()
-        }
-
-        if (job.tmdbId) {
-            lookupShikiByTmdbId(job.tmdbId, function (anime) {
-                var score = formatScore(anime.score)
-                if (score) finish({ id: anime.id, score: score })
-                else fallbackByTitle()
-            }, fallbackByTitle)
-        } else {
-            fallbackByTitle()
-        }
-    }
-
-    function queueShikiRating(data, render, tmdbId) {
-        if (!data || !render) return
-        var root = $(render)
-        if (root.find('.rate--shikimori').length || root.data('shikiRatingQueued')) return
-
-        var titles = lampaCardTitles(data)
-        if (!tmdbId && !titles.length) return
-
-        root.data('shikiRatingQueued', true)
-        var date = data.first_air_date || data.release_date || data.last_air_date || ''
-        var year = date ? parseInt(String(date).substr(0, 4), 10) : 0
-        shikiRatingQueue.push({ render: render, titles: titles, year: year, tmdbId: tmdbId })
-        processShikiRatingQueue()
-    }
-
-    // Match the reference plugin's full/complite lifecycle and full-card render target.
-    function installLampaCardRatings() {
-        if (!Lampa.Listener || typeof Lampa.Listener.follow !== 'function') return
-        Lampa.Listener.follow('full', function (event) {
-            if (!event || event.type !== 'complite' || !event.data || !event.data.movie) return
-            var render = event.object && event.object.activity &&
-                typeof event.object.activity.render === 'function'
-                ? event.object.activity.render()
-                : null
-            if (!render) return
-            var tmdbId = event.object && event.object.id ? event.object.id : event.data.movie.id
-            queueShikiRating(event.data.movie, render, tmdbId)
-        })
-    }
-
-    // ---------- initialization ----------
-    function init() {
-        Lampa.Lang.add(STRINGS)
-        injectCss()
-        Lampa.Component.add('shikimori_search', ShikimoriSearchComponent)
-        Lampa.Component.add('shikimori_full', ShikimoriFullComponent)
-        addMenuItem()
-        addSettings()
-        installLampaCardRatings()
-
-        var shikiManifest = {
-            type: 'video',
-            version: VERSION,
-            name: tr('shikimori_on_shiki'),
-            description: '',
-            onContextMenu: function (card) {
-                var enabled = true
-                try {
-                    if (Lampa.Storage && typeof Lampa.Storage.field === 'function') {
-                        enabled = Lampa.Storage.field('shikimori_context') !== false
-                    }
-                } catch (e) { enabled = true }
-                if (!enabled) return false
-                return { title: tr('shikimori_on_shiki') }
-            },
-            onContextLauch: function (card) {
-                var enabled = true
-                try {
-                    if (Lampa.Storage && typeof Lampa.Storage.field === 'function') {
-                        enabled = Lampa.Storage.field('shikimori_context') !== false
-                    }
-                } catch (e) { enabled = true }
-                if (!enabled) return
-                openShikimoriForCard(card)
-            }
-        }
-        shikiManifest.onContextLaunch = shikiManifest.onContextLauch
-        try {
-            var prevManifest = Lampa.Manifest.plugins
-            var shikiCanWrite = true
-            try {
-                var shikiCur = Lampa.Manifest.plugins
-                Lampa.Manifest.plugins = shikiCur
-            } catch (e) { shikiCanWrite = false }
-            try {
-                var shikiFrozenDesc = null
-                try { shikiFrozenDesc = Object.getOwnPropertyDescriptor(Lampa.Manifest, 'plugins') } catch (ee) {}
-                if (shikiFrozenDesc && shikiFrozenDesc.writable === false) shikiCanWrite = false
-                if (typeof Object.isFrozen === 'function' && Object.isFrozen(Lampa.Manifest)) shikiCanWrite = false
-            } catch (ee) {}
-            if (!shikiCanWrite) {
-                try { if (typeof console !== 'undefined' && console.log) console.log('Shikimori: Manifest.plugins is read-only, context menu not available') } catch (ee) {}
-            } else if (Array.isArray(prevManifest)) {
-                prevManifest.push(shikiManifest)
-            } else {
-                var shikiDesc = null
-                try { shikiDesc = Object.getOwnPropertyDescriptor(Lampa.Manifest, 'plugins') } catch (e) {}
-                if (shikiDesc && typeof shikiDesc.set === 'function') {
-                    Lampa.Manifest.plugins = shikiManifest
-                } else if (prevManifest && typeof prevManifest === 'object' && (prevManifest.onContextMenu || prevManifest.onContextLauch || prevManifest.onContextLaunch)) {
-                    try {
-                        var shikiTestArray = [prevManifest, shikiManifest]
-                        Lampa.Manifest.plugins = shikiTestArray
-                        if (!Array.isArray(Lampa.Manifest.plugins) || Lampa.Manifest.plugins.length !== 2) throw new Error('array not supported')
-                    } catch (e) {
-                        var shikiMerged = {
-                            type: 'video',
-                            name: shikiManifest.name,
-                            description: shikiManifest.description,
-                            onContextMenu: function (card) {
-                                var prevRes = false
-                                try {
-                                    if (typeof prevManifest.onContextMenu === 'function') prevRes = prevManifest.onContextMenu(card)
-                                    else if (prevManifest.onContextMenu) prevRes = !!prevManifest.onContextMenu
-                                } catch (ee) { prevRes = false }
-                                var ourRes = shikiManifest.onContextMenu(card)
-                                if (ourRes) return ourRes
-                                if (prevRes) {
-                                    if (typeof prevRes === 'object') return prevRes
-                                    var prevTitle = prevManifest.title || prevManifest.name || ''
-                                    return { title: prevTitle, name: prevTitle }
-                                }
-                                return false
-                            },
-                            onContextLauch: function (card, item) {
-                                var ourName = ''
-                                try { ourName = tr('shikimori_on_shiki') } catch (ee) {}
-                                var itemName = item && (item.title || item.name) ? String(item.title || item.name) : ''
-                                if (itemName && itemName === ourName) {
-                                    shikiManifest.onContextLauch(card)
-                                } else if (!itemName) {
-                                    if (shikiManifest.onContextMenu(card)) shikiManifest.onContextLauch(card)
-                                    try { if (typeof prevManifest.onContextLauch === 'function') prevManifest.onContextLauch(card, item) } catch (ee) {}
-                                    try { if (typeof prevManifest.onContextLaunch === 'function') prevManifest.onContextLaunch(card, item) } catch (ee) {}
-                                } else {
-                                    try { if (typeof prevManifest.onContextLauch === 'function') prevManifest.onContextLauch(card, item) } catch (ee) {}
-                                    try { if (typeof prevManifest.onContextLaunch === 'function') prevManifest.onContextLaunch(card, item) } catch (ee) {}
-                                }
-                            }
-                        }
-                        shikiMerged.onContextLaunch = shikiMerged.onContextLauch
-                        Lampa.Manifest.plugins = shikiMerged
-                    }
-                } else {
-                    Lampa.Manifest.plugins = shikiManifest
-                }
-            }
-        } catch (e) {
-            try { Lampa.Manifest.plugins = shikiManifest } catch (ee) {}
-        }
-
-        // Optional button inside TMDB full card (with SVG icon + deduplication + anime filter)
-        Lampa.Listener.follow('full', function (e) {
-            if (!e || e.type !== 'complite') return
-            var btnEnabled = false
-            try {
-                if (Lampa.Storage && typeof Lampa.Storage.field === 'function') btnEnabled = !!Lampa.Storage.field('shikimori_button')
-            } catch (ee) {}
-            if (!btnEnabled) return
-            var movie = e.data && e.data.movie
-            if (!movie) return
-            var onlyAnime = true
-            try {
-                if (Lampa.Storage && typeof Lampa.Storage.field === 'function') onlyAnime = Lampa.Storage.field('shikimori_anime_only') !== false
-            } catch (ee) {}
-            if (onlyAnime && !isCardLikelyAnime(movie)) return
-
-            var root = e.object && e.object.activity && e.object.activity.render && e.object.activity.render()
-            if (!root) return
-            var box = $(root).find('.full-start-new__buttons, .full-start__buttons').first()
-            if (!box.length || box.find('.shiki-card-btn').length) return
-
-            var btn = $(
-                '<div class="full-start__button selector shiki-card-btn">' +
-                    ICON_SVG +
-                    '<span>' + esc(tr('shikimori_btn_short')) + '</span>' +
-                '</div>'
-            )
-            btn.on('hover:enter', function () { openShikimoriForCard(movie) })
-            box.append(btn)
-            try { Lampa.Controller.collectionAppend(btn) } catch (ee) {}
-        })
-    }
-
-    if (window.appready) init()
-    else Lampa.Listener.follow('app', function (e) { if (e && e.type === 'ready') init() })
-})()
+})();
