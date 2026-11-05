@@ -333,6 +333,185 @@
     return result;
   }
 
+  function currentLampaRedirectUri() {
+    var location = window.location;
+    if (!location || !location.pathname) return '';
+    var origin = location.origin || (location.protocol && location.host ? location.protocol + '//' + location.host : '');
+    return /^https:\/\//i.test(String(origin)) ? String(origin) + String(location.pathname) : '';
+  }
+
+  function clearOAuthCallbackFromAddressBar() {
+    var location = window.location;
+    if (!location || !window.history || typeof window.history.replaceState !== 'function') return;
+    var search = String(location.search || '');
+    if (search.charAt(0) === '?') search = search.slice(1);
+    var remaining = [];
+    search.split('&').forEach(function (part) {
+      if (!part) return;
+      var key = part.split('=')[0] || '';
+      try { key = decodeURIComponent(key.split('+').join(' ')); } catch (error) {}
+      if (key !== 'code' && key !== 'state' && key !== 'error' && key !== 'error_description') remaining.push(part);
+    });
+    var url = String(location.pathname || '/') +
+      (remaining.length ? '?' + remaining.join('&') : '') +
+      String(location.hash || '');
+    try { window.history.replaceState({}, '', url); } catch (error) {
+      console.warn('Shikimori: не удалось очистить OAuth URL', error);
+    }
+  }
+
+  function finishOAuthConnection(response) {
+    try {
+      saveTokenResponse(response);
+      getShikimoriIdentity(function (user) {
+        Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
+        Lampa.Activity.push({
+          url: '',
+          title: 'Мой список Shikimori',
+          component: 'LMEShikimori',
+          page: 1,
+          accountList: true
+        });
+      }, function (error) {
+        Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
+      });
+    } catch (exception) {
+      Lampa.Noty.show(exception.message);
+    }
+  }
+
+  function exchangeOAuthCode(parsed, config) {
+    // OAuth state is single-use: consume it before exchanging the authorization code.
+    Lampa.Storage.set(OAUTH_STATE_KEY, '');
+    requestOAuthToken({
+      grant_type: 'authorization_code',
+      client_id: config.client_id,
+      client_secret: config.client_secret,
+      code: parsed.code,
+      redirect_uri: config.redirect_uri
+    }, finishOAuthConnection, function (xhr, status, message) {
+      var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
+      Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
+    });
+  }
+
+  function showOAuthContinueMenu(authUrl, config) {
+    Lampa.Select.show({
+      title: 'Завершите вход в Shikimori',
+      items: [
+        { title: 'Я вошёл — вставить адрес возврата', pasteOAuthRedirect: true },
+        { title: 'Скопировать ссылку для входа ещё раз', copyOAuthUrl: true },
+        { title: 'Отменить вход', cancelOAuth: true }
+      ],
+      onBack: function () { Lampa.Storage.set(OAUTH_STATE_KEY, ''); },
+      onSelect: function (choice) {
+        if (choice && choice.pasteOAuthRedirect) {
+          Lampa.Input.edit({
+            title: 'Вставьте полный URL возврата из Shikimori',
+            value: '',
+            free: true,
+            nosave: true
+          }, function (value) {
+            var parsed = parseOAuthRedirect(value);
+            var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
+            if (!String(value || '').trim()) {
+              showOAuthContinueMenu(authUrl, config);
+              return;
+            }
+            if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
+              Lampa.Noty.show('Ссылка не подошла. Нужен полный URL с code и state. Попробуйте ещё раз.');
+              showOAuthContinueMenu(authUrl, config);
+              return;
+            }
+            Lampa.Select.show({
+              title: 'Подключить аккаунт Shikimori?',
+              items: [
+                { title: 'Да, подключить аккаунт', confirmOAuth: true },
+                { title: 'Нет, вернуться', cancelOAuth: true }
+              ],
+              onBack: function () { showOAuthContinueMenu(authUrl, config); },
+              onSelect: function (confirm) {
+                if (confirm && confirm.confirmOAuth) exchangeOAuthCode(parsed, config);
+                else showOAuthContinueMenu(authUrl, config);
+              }
+            });
+          });
+        } else if (choice && choice.copyOAuthUrl) {
+          if (Lampa.Utils && typeof Lampa.Utils.copyTextToClipboard === 'function') {
+            Lampa.Utils.copyTextToClipboard(authUrl, function () {
+              Lampa.Noty.show('Ссылка скопирована. Откройте её в браузере и разрешите доступ.');
+              showOAuthContinueMenu(authUrl, config);
+            }, function () {
+              Lampa.Noty.show('Не удалось скопировать ссылку. Откройте её на экране авторизации.');
+              showOAuthContinueMenu(authUrl, config);
+            });
+          } else {
+            Lampa.Noty.show('Скопируйте или откройте ссылку вручную: ' + escapeHtml(authUrl));
+            showOAuthContinueMenu(authUrl, config);
+          }
+        } else {
+          Lampa.Storage.set(OAUTH_STATE_KEY, '');
+        }
+      }
+    });
+  }
+
+  function showOAuthStartMenu(authUrl, config) {
+    Lampa.Select.show({
+      title: 'Вход в Shikimori',
+      items: [
+        { title: 'Открыть страницу входа на этом устройстве', openOAuth: true },
+        { title: 'Скопировать ссылку для входа на телефоне', copyOAuthUrl: true },
+        { title: 'Отмена', cancelOAuth: true }
+      ],
+      onBack: function () { Lampa.Storage.set(OAUTH_STATE_KEY, ''); },
+      onSelect: function (choice) {
+        if (choice && choice.openOAuth) {
+          var opened = null;
+          try {
+            if (typeof window.open === 'function') opened = window.open(authUrl, '_blank');
+          } catch (error) {
+            console.warn('Shikimori: не удалось открыть окно OAuth', error);
+          }
+          if (!opened) {
+            Lampa.Noty.show('Браузер не открылся. Попробуйте скопировать ссылку и открыть её на телефоне.');
+          } else {
+            Lampa.Noty.show('Разрешите доступ в открывшемся окне. Если возврат не сработает автоматически, вернитесь сюда и вставьте URL.');
+          }
+          showOAuthContinueMenu(authUrl, config);
+        } else if (choice && choice.copyOAuthUrl) {
+          if (Lampa.Utils && typeof Lampa.Utils.copyTextToClipboard === 'function') {
+            Lampa.Utils.copyTextToClipboard(authUrl, function () {
+              Lampa.Noty.show('Ссылка скопирована. Откройте её в браузере на телефоне.');
+              showOAuthContinueMenu(authUrl, config);
+            }, function () {
+              Lampa.Noty.show('Не удалось скопировать ссылку. Попробуйте открыть её на этом устройстве.');
+              showOAuthStartMenu(authUrl, config);
+            });
+          } else {
+            Lampa.Noty.show('Ссылка для входа: ' + escapeHtml(authUrl));
+            showOAuthContinueMenu(authUrl, config);
+          }
+        } else {
+          Lampa.Storage.set(OAUTH_STATE_KEY, '');
+        }
+      }
+    });
+  }
+
+  function handleOAuthCallbackFromLocation() {
+    if (!window.location || !window.location.href) return false;
+    var parsed = parseOAuthRedirect(window.location.href);
+    var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
+    if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) return false;
+    var config = readOAuthConfig();
+    if (!config.client_id || !config.client_secret || !config.redirect_uri) return false;
+    clearOAuthCallbackFromAddressBar();
+    Lampa.Noty.show('Возврат из Shikimori получен. Завершаем вход…');
+    exchangeOAuthCode(parsed, config);
+    return true;
+  }
+
   function editOAuthSettings(done) {
     var config = readOAuthConfig();
     var fields = [
@@ -342,16 +521,26 @@
     ];
 
     function menu() {
-      Lampa.Select.show({
-        title: 'Настройки OAuth Shikimori',
-        items: [
+      var items = [];
+      var suggestedRedirect = currentLampaRedirectUri();
+      if (suggestedRedirect) {
+        items.push({ title: 'Использовать адрес этой Lampa', subtitle: suggestedRedirect, useCurrentRedirect: true });
+      }
+      items.push(
           { title: 'Client ID', subtitle: config.client_id ? 'Настроен' : 'Не задан', field: fields[0] },
           { title: 'Client Secret', subtitle: config.client_secret ? 'Настроен' : 'Не задан', field: fields[1] },
           { title: 'Redirect URI', subtitle: escapeHtml(config.redirect_uri || 'Не задан'), field: fields[2] },
           { title: 'Сохранить настройки', saveOAuth: true }
-        ],
+      );
+      Lampa.Select.show({
+        title: 'Настройки OAuth Shikimori',
+        items: items,
         onBack: function () {},
         onSelect: function (chosen) {
+          if (chosen && chosen.useCurrentRedirect) {
+            config.redirect_uri = suggestedRedirect;
+            return menu();
+          }
           if (chosen && chosen.saveOAuth) {
             if (!config.client_id || !config.client_secret || !config.redirect_uri) {
               Lampa.Noty.show('Заполните Client ID, Client Secret и Redirect URI');
@@ -412,81 +601,7 @@
       state: state
     });
 
-    var authWindow = null;
-    try {
-      if (typeof window.open === 'function') authWindow = window.open(authUrl, '_blank');
-    } catch (exception) {
-      console.warn('Shikimori: не удалось открыть окно OAuth', exception);
-    }
-    if (!authWindow) {
-      Lampa.Noty.show('Если браузер не открылся, откройте ссылку вручную: ' + escapeHtml(authUrl));
-    } else {
-      Lampa.Noty.show('Разрешите доступ Shikimori и скопируйте полный URL после перенаправления, включая code и state');
-    }
-    Lampa.Input.edit({
-      title: 'Вставьте полный URL перенаправления Shikimori',
-      value: '',
-      free: true,
-      nosave: true
-    }, function (value) {
-      if (!String(value || '').trim()) {
-        Lampa.Storage.set(OAUTH_STATE_KEY, '');
-        return;
-      }
-      var parsed = parseOAuthRedirect(value);
-      var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
-      if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
-        Lampa.Noty.show('Код авторизации или state не совпадает. Повторите подключение и вставьте полный URL.');
-        return;
-      }
-      Lampa.Select.show({
-        title: 'Подтвердить подключение Shikimori',
-        items: [
-          { title: 'Обменять код и подключить аккаунт', confirmOAuth: true },
-          { title: 'Отмена', cancelOAuth: true }
-        ],
-        onBack: function () {
-          Lampa.Storage.set(OAUTH_STATE_KEY, '');
-        },
-        onSelect: function (choice) {
-          if (!choice || !choice.confirmOAuth) {
-            Lampa.Storage.set(OAUTH_STATE_KEY, '');
-            return;
-          }
-          // OAuth state is single-use: consume it before exchanging the authorization code.
-          Lampa.Storage.set(OAUTH_STATE_KEY, '');
-          requestOAuthToken({
-            grant_type: 'authorization_code',
-            client_id: config.client_id,
-            client_secret: config.client_secret,
-            code: parsed.code,
-            redirect_uri: config.redirect_uri
-          }, function (response) {
-            try {
-              saveTokenResponse(response);
-              Lampa.Storage.set(OAUTH_STATE_KEY, '');
-              getShikimoriIdentity(function (user) {
-                Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
-                Lampa.Activity.push({
-                  url: '',
-                  title: 'Мой список Shikimori',
-                  component: 'LMEShikimori',
-                  page: 1,
-                  accountList: true
-                });
-              }, function (error) {
-                Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
-              });
-            } catch (exception) {
-              Lampa.Noty.show(exception.message);
-            }
-          }, function (xhr, status, message) {
-            var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
-            Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
-          });
-        }
-      });
-    });
+    showOAuthStartMenu(authUrl, config);
   }
 
   function disconnectShikimori() {
@@ -1879,6 +1994,8 @@
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
     Component();
+    // If the OAuth redirect points back to this Lampa origin, finish sign-in automatically.
+    handleOAuthCallbackFromLocation();
     //Set menu
     $('body').append(Lampa.Template.get('LMEShikimoriStyle', {}, true));
     if (window.appready) add();

@@ -16,6 +16,7 @@ const exportForTests = [
   '    Card: Card,',
   '    Component: Component$1,',
   '    parseOAuthRedirect: parseOAuthRedirect,',
+  '    handleOAuthCallbackFromLocation: handleOAuthCallbackFromLocation,',
   '    refreshAccessToken: refreshAccessToken,',
   '    normalizeUserRateEntry: normalizeUserRateEntry,',
   '    userRateStatusTitle: userRateStatusTitle,',
@@ -211,6 +212,51 @@ function testOAuthRedirectParsing() {
   const malformed = api.parseOAuthRedirect('https://example.test/?code=%E0%A4%A&state=x');
   assert.equal(malformed.code, '');
   assert.equal(malformed.state, '');
+}
+
+function testOAuthSameOriginCallback() {
+  storage.lme_shikimori_account_v1 = {
+    client_id: 'tv-client',
+    client_secret: 'tv-secret',
+    redirect_uri: 'https://lampa.example/'
+  };
+  storage.lme_shikimori_oauth_state = 'expected-tv-state';
+  window.location = {
+    href: 'https://lampa.example/?code=tv-auth-code&state=expected-tv-state',
+    origin: 'https://lampa.example',
+    pathname: '/',
+    search: '?code=tv-auth-code&state=expected-tv-state',
+    hash: ''
+  };
+  window.history = {
+    lastUrl: '',
+    replaceState(state, title, url) { this.lastUrl = url; }
+  };
+
+  const before = ajaxCalls.length;
+  assert.equal(api.handleOAuthCallbackFromLocation(), true, 'matching callback should be consumed automatically');
+  assert.equal(storage.lme_shikimori_oauth_state, '', 'callback state must be consumed once');
+  assert.equal(window.history.lastUrl, '/', 'OAuth code and state must be removed from the address bar');
+
+  const tokenRequest = ajaxCalls.slice(before).find(item => item.options.url === 'https://shikimori.io/oauth/token');
+  assert.ok(tokenRequest, 'callback should exchange the authorization code');
+  const payload = new URLSearchParams(tokenRequest.options.data);
+  assert.equal(payload.get('code'), 'tv-auth-code');
+  assert.equal(payload.get('client_id'), 'tv-client');
+
+  tokenRequest.xhr.resolve({ access_token: 'tv-access', refresh_token: 'tv-refresh', expires_in: 86400 });
+  const identityRequest = ajaxCalls.slice(before).find(item => item.options.url === 'https://shikimori.one/api/users/whoami');
+  assert.ok(identityRequest, 'successful token exchange should load the profile');
+  identityRequest.xhr.resolve({ id: 77, nickname: 'TV user' });
+  assert.equal(storage.lme_shikimori_account_v1.user.id, 77);
+
+  storage.lme_shikimori_oauth_state = 'expected-tv-state';
+  window.location.href = 'https://lampa.example/?code=wrong-code&state=wrong-state';
+  const requestCount = ajaxCalls.length;
+  assert.equal(api.handleOAuthCallbackFromLocation(), false, 'mismatched state must not be accepted');
+  assert.equal(ajaxCalls.length, requestCount, 'mismatched state must not start a token request');
+  window.location = null;
+  window.history = null;
 }
 
 function testConcurrentTokenRefresh() {
@@ -453,6 +499,7 @@ function testLegacyCardFallbackSafety() {
 testRequestCancellation();
 testGraphQLVariablesAndFilterCoverage();
 testOAuthRedirectParsing();
+testOAuthSameOriginCallback();
 testConcurrentTokenRefresh();
 testUserRateNormalization();
 testV1AccountRateNormalization();
@@ -463,4 +510,4 @@ testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testLegacyCardFallbackSafety();
 
-process.stdout.write('Shikimori smoke tests: PASS (12 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (13 groups)\n');
