@@ -232,7 +232,7 @@
 
     function normalizeTitle(value) {
       return cleanName(value).toLowerCase()
-        .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF]+/g, ' ')
+        .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, ' ')
         .trim();
     }
 
@@ -618,6 +618,15 @@
         }
       };
 
+      function filterGenres() {
+        return (runtimeCache.genres || []).map(function (item) {
+          var copy = $.extend({}, item);
+          delete copy.selected;
+          delete copy.checked;
+          return copy;
+        });
+      }
+
       function setGenres(response) {
         var genres = Array.isArray(response) ? response : [];
         runtimeCache.genres = genres.filter(function (item) {
@@ -625,11 +634,11 @@
         }).map(function (item) {
           return $.extend({}, item, { title: item.name || item.russian || String(item.id || '') });
         });
-        filters.kind.items = runtimeCache.genres.slice();
+        filters.kind.items = filterGenres();
       }
 
       if (runtimeCache.genres) {
-        filters.kind.items = runtimeCache.genres.slice();
+        filters.kind.items = filterGenres();
       } else {
         network.get(
           'https://shikimori.one/api/genres',
