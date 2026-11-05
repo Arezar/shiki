@@ -15,12 +15,6 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
-  '    parseOAuthRedirect: parseOAuthRedirect,',
-  '    handleOAuthCallbackFromLocation: handleOAuthCallbackFromLocation,',
-  '    refreshAccessToken: refreshAccessToken,',
-  '    normalizeUserRateEntry: normalizeUserRateEntry,',
-  '    userRateStatusTitle: userRateStatusTitle,',
-  '    accountIsConnected: accountIsConnected',
   '  };',
   startMarker
 ].join('\n');
@@ -201,120 +195,6 @@ function testGraphQLVariablesAndFilterCoverage() {
   assert.equal(graphQLError.message, 'Invalid sort');
 }
 
-function testOAuthRedirectParsing() {
-  const parsed = api.parseOAuthRedirect('https://example.test/callback?code=one-time-code&state=state-value');
-  assert.equal(parsed.code, 'one-time-code');
-  assert.equal(parsed.state, 'state-value');
-
-  const raw = api.parseOAuthRedirect('one-time-code');
-  assert.equal(raw.code, 'one-time-code');
-  assert.equal(raw.state, '');
-  const malformed = api.parseOAuthRedirect('https://example.test/?code=%E0%A4%A&state=x');
-  assert.equal(malformed.code, '');
-  assert.equal(malformed.state, '');
-}
-
-function testOAuthSameOriginCallback() {
-  storage.lme_shikimori_account_v1 = {
-    client_id: 'tv-client',
-    client_secret: 'tv-secret',
-    redirect_uri: 'https://lampa.example/'
-  };
-  storage.lme_shikimori_oauth_state = 'expected-tv-state';
-  window.location = {
-    href: 'https://lampa.example/?code=tv-auth-code&state=expected-tv-state',
-    origin: 'https://lampa.example',
-    pathname: '/',
-    search: '?code=tv-auth-code&state=expected-tv-state',
-    hash: ''
-  };
-  window.history = {
-    lastUrl: '',
-    replaceState(state, title, url) { this.lastUrl = url; }
-  };
-
-  const before = ajaxCalls.length;
-  assert.equal(api.handleOAuthCallbackFromLocation(), true, 'matching callback should be consumed automatically');
-  assert.equal(storage.lme_shikimori_oauth_state, '', 'callback state must be consumed once');
-  assert.equal(window.history.lastUrl, '/', 'OAuth code and state must be removed from the address bar');
-
-  const tokenRequest = ajaxCalls.slice(before).find(item => item.options.url === 'https://shikimori.io/oauth/token');
-  assert.ok(tokenRequest, 'callback should exchange the authorization code');
-  const payload = new URLSearchParams(tokenRequest.options.data);
-  assert.equal(payload.get('code'), 'tv-auth-code');
-  assert.equal(payload.get('client_id'), 'tv-client');
-
-  tokenRequest.xhr.resolve({ access_token: 'tv-access', refresh_token: 'tv-refresh', expires_in: 86400 });
-  const identityRequest = ajaxCalls.slice(before).find(item => item.options.url === 'https://shikimori.one/api/users/whoami');
-  assert.ok(identityRequest, 'successful token exchange should load the profile');
-  identityRequest.xhr.resolve({ id: 77, nickname: 'TV user' });
-  assert.equal(storage.lme_shikimori_account_v1.user.id, 77);
-
-  storage.lme_shikimori_oauth_state = 'expected-tv-state';
-  window.location.href = 'https://lampa.example/?code=wrong-code&state=wrong-state';
-  const requestCount = ajaxCalls.length;
-  assert.equal(api.handleOAuthCallbackFromLocation(), false, 'mismatched state must not be accepted');
-  assert.equal(ajaxCalls.length, requestCount, 'mismatched state must not start a token request');
-  window.location = null;
-  window.history = null;
-}
-
-function testConcurrentTokenRefresh() {
-  storage.lme_shikimori_account_v1 = {
-    client_id: 'client-id',
-    client_secret: 'client-secret',
-    refresh_token: 'old-refresh'
-  };
-
-  const before = ajaxCalls.length;
-  const received = [];
-  const errors = [];
-  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
-  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
-
-  const requests = ajaxCalls.slice(before).filter(item => item.options.url === 'https://shikimori.io/oauth/token');
-  assert.equal(requests.length, 1, 'parallel callers must share a single refresh request');
-  requests[0].xhr.resolve({
-    access_token: 'new-access',
-    refresh_token: 'new-refresh',
-    expires_in: 86400
-  });
-
-  assert.deepEqual(received, ['new-access', 'new-access']);
-  assert.equal(errors.length, 0);
-  assert.equal(storage.lme_shikimori_account_v1.refresh_token, 'new-refresh');
-  assert.equal(storage.lme_shikimori_account_v1.access_token, 'new-access');
-}
-
-function testUserRateNormalization() {
-  const anime = api.normalizeUserRateEntry({
-    user_rate: { id: 99, status: 'watching', score: 9, episodes: 12, user_id: 7 },
-    anime: { id: 42, name: 'Test anime', score: '8.5' }
-  });
-  assert.equal(anime.id, 42);
-  assert.equal(anime.__user_rate.id, 99);
-  assert.equal(anime.__user_rate.status, 'watching');
-  assert.equal(anime.__user_rate.score, 9);
-  assert.equal(anime.__user_rate.episodes, 12);
-  assert.equal(api.userRateStatusTitle('completed'), 'Просмотрено');
-}
-
-function testV1AccountRateNormalization() {
-  const anime = api.normalizeUserRateEntry({
-    user_rate: { id: 7, status: 'watching', score: 8, episodes: 4 },
-    anime: {
-      id: 42,
-      name: 'V1 anime',
-      image: { original: '/system/animes/original/42.jpg' },
-      aired_on: '2024-04-11'
-    }
-  });
-  assert.equal(anime.poster.originalUrl, 'https://shikimori.one/system/animes/original/42.jpg');
-  assert.equal(anime.airedOn.date, '2024-04-11');
-  assert.equal(anime.airedOn.year, 2024);
-  assert.equal(anime.season, 'spring 2024');
-}
-
 function testNativeCardBadgesAndIdIsolation() {
   const appended = [];
   const view = { append(node) { appended.push(node); } };
@@ -345,16 +225,14 @@ function testNativeCardBadgesAndIdIsolation() {
     poster: { originalUrl: 'https://example.test/poster.jpg' },
     score: '8.2',
     airedOn: { year: 2024, date: '2024-01-01' },
-    __user_rate: { status: 'watching' }
-  }, 'en', { long() {} });
+  }, 'en', {});
 
   assert.equal(nativeData.id, 'shiki-42');
   assert.ok(!enabledModules.includes('Favorite'));
   assert.ok(!enabledModules.includes('Watched'));
   assert.ok(!enabledModules.includes('Plugins'));
-  assert.equal(appended.length, 2, 'native DOM card must receive kind and Shikimori status badges');
+  assert.equal(appended.length, 1, 'native DOM card must receive the Shikimori kind badge only');
   assert.equal(appended[0].attrs.class, 'card__type LMEShikimori__kind');
-  assert.equal(appended[1].attrs.class, 'LMEShikimori__user-status');
   card.destroy();
   Lampa.Manifest.app_digital = 200;
   delete Lampa.Maker;
@@ -474,6 +352,12 @@ function testEmptyRestoredPage() {
   component.destroy();
 }
 
+function testNoAccountAuthorizationRemains() {
+  assert.doesNotMatch(source, /oauth\\/authorize|oauth\\/token|client_secret|refresh_token|user_rates|whoami/i);
+  assert.doesNotMatch(source, /accountMenu|connectShikimori|disconnectShikimori|authenticatedRequest|accountList|Shikimori__account/);
+  assert.doesNotMatch(source, /Изменить запись в Shikimori|Мой список Shikimori/);
+}
+
 function testLegacyCardFallbackSafety() {
   new api.Card({
     id: 5,
@@ -492,22 +376,17 @@ function testLegacyCardFallbackSafety() {
   assert.equal(storage.lme_shikimori_watchlist, undefined, 'plugin must not create a duplicate local watchlist');
   assert.doesNotMatch(source, /getWatchlist|toggleWatchlist|WATCHLIST_KEY/);
   assert.match(source, /Lampa\.Maker\.make\('Card'/, 'Lampa 3.x should use native cards');
-  assert.match(source, /item\.menu_list\.push/, 'Shikimori actions should use the native card context menu');
   assert.match(source, /onCheck: function \(chosen\)/, 'genre filters should use checkbox callbacks');
 }
 
 testRequestCancellation();
 testGraphQLVariablesAndFilterCoverage();
-testOAuthRedirectParsing();
-testOAuthSameOriginCallback();
-testConcurrentTokenRefresh();
-testUserRateNormalization();
-testV1AccountRateNormalization();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testResetFiltersClearsCheckboxState();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testLegacyCardFallbackSafety();
+testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (13 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (9 groups)\n');
