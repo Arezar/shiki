@@ -245,8 +245,8 @@ function testGraphQLJsonAndVariables() {
   assert.equal(payload.variables.score, 8);
   assert.equal(payload.variables.rating, 'pg_13');
   assert.match(payload.query, /malId/);
-  assert.match(payload.query, /search: \\$search/);
-  assert.match(payload.query, /rating: \\$rating/);
+  assert.ok(payload.query.indexOf('search: $search') !== -1);
+  assert.ok(payload.query.indexOf('rating: $rating') !== -1);
 
   request.xhr.resolve({ data: { animes: [{ id: 1, malId: 1234 }] } });
   assert.equal(completed.length, 1);
