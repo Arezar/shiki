@@ -353,7 +353,7 @@ function testEmptyRestoredPage() {
 }
 
 function testNoAccountAuthorizationRemains() {
-  assert.doesNotMatch(source, /oauth\\/authorize|oauth\\/token|client_secret|refresh_token|user_rates|whoami/i);
+  assert.doesNotMatch(source, /oauth|client_secret|refresh_token|user_rates|whoami/i);
   assert.doesNotMatch(source, /accountMenu|connectShikimori|disconnectShikimori|authenticatedRequest|accountList|Shikimori__account/);
   assert.doesNotMatch(source, /Изменить запись в Shikimori|Мой список Shikimori/);
 }
