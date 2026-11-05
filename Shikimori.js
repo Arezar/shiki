@@ -462,7 +462,7 @@
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-list{display:flex;flex-flow:row wrap;align-items:stretch;width:100%;max-width:100%;box-sizing:border-box}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
-            '.shiki-card{display:flex;flex:0 0 calc(20% - .8em);flex-direction:column;align-items:stretch;min-width:0;max-width:calc(20% - .8em);box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0 .4em .8em;padding:.45em;cursor:pointer}',
+            '.shiki-card{display:flex;flex:0 0 20%;width:20%;flex-direction:column;align-items:stretch;min-width:0;max-width:20%;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.4em;cursor:pointer}',
             '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
             '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
             '.shiki-card__poster img{display:block;width:100%;height:14em;max-width:100%;object-fit:cover;border-radius:.22em;background:rgba(255,255,255,.07)}',
@@ -506,8 +506,8 @@
             '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
             '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
-            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card{flex-basis:calc(25% - .8em);max-width:calc(25% - .8em)}.shiki-card__poster img{height:12em}}',
-            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-card{flex-basis:calc(33.333% - .8em);max-width:calc(33.333% - .8em)}.shiki-card__poster img{height:10em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
+            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card{flex-basis:25%;width:25%;max-width:25%}.shiki-card__poster img{height:12em}}',
+            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-card{flex-basis:33.333%;width:33.333%;max-width:33.333%}.shiki-card__poster img{height:10em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
         ].join('')
         $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
     }
@@ -949,8 +949,47 @@
     }
 
     // ---------- controller helper (standard Lampa spatial navigation) ----------
-    function activateContentController(scroll, getLastFocused) {
+    function activateContentController(scroll, getLastFocused, setLastFocused) {
         var container = scroll.render(true)
+
+        // Lampa's Scroll moves .scroll__body with transforms; Navigator.canmove()
+        // only reports focus-neighbours and can be false while content remains above.
+        // In that case, move focus to the nearest selector visually above and let
+        // Lampa.Scroll reveal it. Hand off to the head only at the real content edge.
+        function focusAboveCurrent() {
+            var current = getLastFocused && getLastFocused()
+            if (!current || !current.getBoundingClientRect) return false
+
+            var currentRect = current.getBoundingClientRect()
+            var currentCenter = currentRect.left + currentRect.width / 2
+            var candidates = $(container).find('.selector').toArray()
+            var best = null
+            var bestScore = Infinity
+
+            for (var i = 0; i < candidates.length; i++) {
+                var candidate = candidates[i]
+                if (candidate === current || !candidate.getBoundingClientRect) continue
+                var rect = candidate.getBoundingClientRect()
+                if (!rect.width || !rect.height) continue
+                var centerY = rect.top + rect.height / 2
+                if (centerY >= currentRect.top + currentRect.height / 2 - 2) continue
+
+                var verticalGap = Math.max(0, currentRect.top - rect.bottom)
+                var horizontalGap = Math.abs((rect.left + rect.width / 2) - currentCenter)
+                var score = verticalGap * 2 + horizontalGap
+                if (score < bestScore) {
+                    bestScore = score
+                    best = candidate
+                }
+            }
+
+            if (!best) return false
+            if (setLastFocused) setLastFocused(best)
+            try { Lampa.Controller.collectionFocus(best, container) } catch (e) {}
+            try { scroll.update(best, true) } catch (e) {}
+            return true
+        }
+
         Lampa.Controller.add('content', {
             toggle: function () {
                 Lampa.Controller.collectionSet(container)
@@ -958,7 +997,7 @@
             },
             up: function () {
                 if (typeof Navigator !== 'undefined' && Navigator.canmove('up')) Navigator.move('up')
-                else Lampa.Controller.toggle('head')
+                else if (!focusAboveCurrent()) Lampa.Controller.toggle('head')
             },
             down: function () {
                 if (typeof Navigator !== 'undefined' && Navigator.canmove('down')) Navigator.move('down')
@@ -1037,7 +1076,7 @@
 
         function setupController() {
             if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused })
+            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
         }
 
         function askKeyword() {
