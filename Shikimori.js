@@ -1874,7 +1874,7 @@
                 var full = normalize(names[i])
                 var baseTitle = stripSeasonSuffix(names[i])
                 // Shikimori sequel titles often end in a bare Arabic numeral (e.g. "... 2").
-                if (seasonHint) baseTitle = baseTitle.replace(/\\s+\\d+$/, '')
+                if (seasonHint) baseTitle = baseTitle.replace(/\s+\d+$/, '')
                 var base = normalize(baseTitle)
                 if (cardNames.indexOf(full) >= 0 || (base && cardNames.indexOf(base) >= 0)) return true
             }
