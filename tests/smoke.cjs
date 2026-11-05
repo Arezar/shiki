@@ -49,7 +49,7 @@ FakeJQuery.prototype.addClass = function () { return this; };
 FakeJQuery.prototype.removeClass = function () { return this; };
 FakeJQuery.prototype.remove = function () { this.removed = true; return this; };
 FakeJQuery.prototype.empty = function () { this.nodes = []; return this; };
-FakeJQuery.prototype.text = function () { return this; };
+FakeJQuery.prototype.text = function (value) { if (arguments.length) this.textContent = String(value); return this; };
 FakeJQuery.prototype.prepend = function (value) { this.nodes.unshift(value); return this; };
 
 function $(selector) {
@@ -300,16 +300,46 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(searchButton && searchButton.handlers['hover:enter']);
   searchButton.handlers['hover:enter']();
   const filterMenu = selectCalls[selectCalls.length - 1];
+  assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
   const resetMenu = selectCalls[selectCalls.length - 1];
-  const statusFilter = resetMenu.items.find(item => item.title === 'Статус выхода');
+  resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
+  const basicMenu = selectCalls[selectCalls.length - 1];
+  const statusFilter = basicMenu.items.find(item => item.title === 'Статус выхода');
   assert.ok(statusFilter.items.every(item => item.selected === false && item.checked === false));
-  const typeFilter = resetMenu.items.find(item => item.title === 'Тип аниме');
+  const typeFilter = basicMenu.items.find(item => item.title === 'Тип аниме');
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
-  const genreFilter = resetMenu.items.find(item => item.title === 'Жанры (можно несколько)');
+  const genreFilter = basicMenu.items.find(item => item.title === 'Жанры (можно несколько)');
   assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
+}
+
+function testTvFriendlyFilterGroupsAndBackNavigation() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
+  assert.ok(searchButton && searchButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
+  searchButton.handlers['hover:enter']();
+
+  const rootMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(rootMenu.title, 'Фильтры Shikimori');
+  assert.equal(rootMenu.items.length, 6, 'top-level filters should be grouped into a compact menu');
+  const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
+  assert.ok(qualityGroup, 'quality group should be available');
+  rootMenu.onSelect(qualityGroup);
+
+  const groupMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(groupMenu.title, 'Оценки и формат');
+  assert.equal(groupMenu.items.length, 3, 'group should expose only its related filters');
+  assert.ok(groupMenu.items.some(item => item.title === 'Минимальная оценка Shikimori'));
+  groupMenu.onBack();
+
+  assert.equal(selectCalls[selectCalls.length - 1].title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  component.destroy();
 }
 
 function testPaginationDeduplicationAndDestroy() {
@@ -365,7 +395,10 @@ function testCatalogueRetryAfterInitialFailure() {
   const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
   const firstRequest = graphqlRequests()[0];
   assert.ok(firstRequest, 'initial catalogue request should start');
+  const initialLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
+  assert.ok(initialLoading && /Загружается каталог/.test(initialLoading.textContent), 'initial load should show visible progress text');
   firstRequest.xhr.reject(503, { message: 'Service unavailable' });
+  assert.equal(initialLoading.removed, true, 'loading status should be removed after a request failure');
 
   const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry">') !== -1);
   assert.ok(retry && retry.handlers['hover:enter'], 'failed initial load should expose a remote-friendly retry control');
@@ -374,8 +407,11 @@ function testCatalogueRetryAfterInitialFailure() {
   const retryRequest = graphqlRequests()[1];
   assert.equal(JSON.parse(retryRequest.options.data).variables.page, 1, 'retry should request the failed page');
   assert.equal(retry.removed, true, 'retry control should disappear once retry starts');
+  const retryLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
+  assert.ok(retryLoading && /Повторная загрузка/.test(retryLoading.textContent), 'retry should expose a visible loading status');
 
   retryRequest.xhr.resolve({ data: { animes: [{ id: 9001, name: 'Retry success' }] } });
+  assert.equal(retryLoading.removed, true, 'loading status should disappear after a successful retry');
   component.destroy();
 }
 
@@ -414,10 +450,11 @@ testGraphQLVariablesAndFilterCoverage();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testResetFiltersClearsCheckboxState();
+testTvFriendlyFilterGroupsAndBackNavigation();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testCatalogueRetryAfterInitialFailure();
 testLegacyCardFallbackSafety();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (10 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
