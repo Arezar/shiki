@@ -1860,14 +1860,80 @@
             return dedupeQueries([anime && anime.name, anime && anime.russian].concat(
                 anime && Array.isArray(anime.english) ? anime.english : [anime && anime.english],
                 anime && Array.isArray(anime.synonyms) ? anime.synonyms : [anime && anime.synonyms]
-            )).map(normalize).filter(Boolean)
+            )).filter(Boolean)
         }
 
-        function isExactPrimaryTitle(anime) {
-            var primary = normalize(queries[0])
-            if (!primary) return false
+        function titleMatchesCard(anime) {
+            var cardNames = dedupeQueries([
+                card.title, card.name, card.original_title, card.original_name,
+                stripSeasonSuffix(card.title || card.name || ''),
+                stripSeasonSuffix(card.original_title || card.original_name || '')
+            ]).map(normalize).filter(Boolean)
             var names = animeNames(anime)
-            return names.indexOf(primary) >= 0
+            for (var i = 0; i < names.length; i++) {
+                var full = normalize(names[i])
+                var base = normalize(stripSeasonSuffix(names[i]))
+                if (cardNames.indexOf(full) >= 0 || (base && cardNames.indexOf(base) >= 0)) return true
+            }
+            return false
+        }
+
+        // Lampa commonly represents an entire TV franchise as one card.
+        // In that case the card's first_air_date is season 1, while seasons[]
+        // carries the dates needed to identify the latest represented season.
+        function getCardSeasonHint() {
+            var seasons = Array.isArray(card.seasons) ? card.seasons : []
+            var latest = null
+            seasons.forEach(function (season) {
+                if (!season) return
+                var number = parseInt(season.season_number, 10) || 0
+                var year = season.air_date ? parseInt(String(season.air_date).substr(0, 4), 10) : 0
+                if (number > 0 && (!latest || number > latest.number)) {
+                    latest = { number: number, year: year || 0 }
+                }
+            })
+            var count = parseInt(card.number_of_seasons, 10) || 0
+            if (count > 1 && (!latest || count > latest.number)) latest = { number: count, year: latest ? latest.year : 0 }
+            return latest && latest.number > 1 ? latest : null
+        }
+
+        function animeSeasonNumber(anime) {
+            var names = animeNames(anime)
+            for (var i = 0; i < names.length; i++) {
+                var value = String(names[i])
+                var match = value.match(/(?:season|сезон|part|часть)\\s*(\\d+)|(?:^|\\s)(\\d+)\\s*(?:season|сезон|part|часть)\\b/i)
+                if (match) return parseInt(match[1] || match[2], 10) || 0
+                match = value.match(/\\s+(?:ii|iii|iv|v|vi|vii|viii)$/i)
+                if (match) {
+                    var roman = { ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8 }
+                    return roman[match[0].trim().toLowerCase()] || 0
+                }
+                match = value.match(/\\s+(\\d+)$/)
+                if (match) return parseInt(match[1], 10) || 0
+            }
+            return 0
+        }
+
+        function animeYear(anime) {
+            return anime && anime.aired_on ? parseInt(String(anime.aired_on).substr(0, 4), 10) || 0 : 0
+        }
+
+        var seasonHint = getCardSeasonHint()
+
+        function candidateScore(anime) {
+            if (!titleMatchesCard(anime)) return -1000
+            var score = 100
+            var number = animeSeasonNumber(anime)
+            var year = animeYear(anime)
+            if (seasonHint) {
+                if (number && number === seasonHint.number) score += 100
+                else if (number && number !== seasonHint.number) score -= 80
+                if (seasonHint.year && year === seasonHint.year) score += 80
+                else if (seasonHint.year && year) score -= Math.min(40, Math.abs(seasonHint.year - year) * 10)
+            } else if (cardYear && year) {
+                score += Math.max(0, 20 - Math.abs(cardYear - year) * 5)
+            }
+            return score
         }
 
         function finishSearch() {
@@ -1888,21 +1954,19 @@
                 return
             }
 
-            var exact = gathered.filter(isExactPrimaryTitle)
-            if (exact.length === 1 && exact[0].id) {
-                pushDetails(exact[0])
+            var sorted = gathered.slice().sort(function (a, b) {
+                return candidateScore(b) - candidateScore(a)
+            })
+            var bestScore = candidateScore(sorted[0])
+            var secondScore = sorted.length > 1 ? candidateScore(sorted[1]) : -1000
+            var confident = titleMatchesCard(sorted[0]) &&
+                ((!seasonHint && bestScore >= 100 && secondScore < 100) ||
+                 (seasonHint && bestScore >= 180 && bestScore - secondScore >= 30))
+
+            if (confident && sorted[0].id) {
+                pushDetails(sorted[0])
                 return
             }
-
-            var sorted = gathered.slice().sort(function (a, b) {
-                var exactA = isExactPrimaryTitle(a) ? 1 : 0
-                var exactB = isExactPrimaryTitle(b) ? 1 : 0
-                if (exactA !== exactB) return exactB - exactA
-                if (!cardYear) return 0
-                var ya = a.aired_on ? Math.abs(cardYear - parseInt(String(a.aired_on).substr(0, 4), 10)) : 99
-                var yb = b.aired_on ? Math.abs(cardYear - parseInt(String(b.aired_on).substr(0, 4), 10)) : 99
-                return ya - yb
-            })
 
             try {
                 if (Lampa.Select && typeof Lampa.Select.show === 'function') {
@@ -1912,6 +1976,7 @@
                             var scoreStr = formatScore(a.score) || '—'
                             var rawSub = kindTitle(a.kind) + ' · ' +
                                 (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
+                            if (seasonHint && animeSeasonNumber(a)) rawSub += ' · S' + animeSeasonNumber(a)
                             return {
                                 title: esc((isRu() && a.russian) ? a.russian : a.name),
                                 subtitle: esc(rawSub),
