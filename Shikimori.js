@@ -1001,10 +1001,6 @@
       loading = false;
       network.clear();
       lookupNetwork.clear();
-      authGeneration += 1;
-      authNetwork.clear();
-      refreshWaiters = [];
-      refreshInFlight = false;
       head.off();
       items.forEach(function (item) { item.destroy(); });
       scroll.destroy();
