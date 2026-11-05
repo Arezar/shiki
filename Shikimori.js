@@ -21,10 +21,6 @@
     return '';
   }
 
-  function safeImageUrl(value) {
-    return escapeHtml(imageUrlValue(value));
-  }
-
   function NetworkManager(timeout) {
     var active = [];
     var defaultTimeout = timeout || 15000;
@@ -609,11 +605,6 @@
       '    japanese',
       '    kind',
       '    score',
-      '    rating',
-      '    episodes',
-      '    episodesAired',
-      '    duration',
-      '    status',
       '    season',
       '    airedOn { year date }',
       '    poster { originalUrl mainUrl }',
@@ -624,7 +615,7 @@
     var variables = {
       limit: 36,
       page: Math.max(1, parseInt(params && params.page, 10) || 1),
-      order: params && params.sort || 'aired_on'
+      order: params && params.sort || 'ranked'
     };
 
     if (params && params.kind) variables.kind = String(params.kind);
@@ -1043,16 +1034,15 @@
     }
 
     function createSeasonItems() {
-      var ranges = [
-        { title: '2020-е', code: '2020_2029' },
-        { title: '2010-е', code: '2010_2019' },
-        { title: '2000-е', code: '2000_2009' },
-        { title: '1990-е', code: '199x' },
-        { title: '1980-е', code: '198x' },
-        { title: 'До 1980-х', code: 'ancient' }
-      ];
-      var seasons = [];
       var now = new Date();
+      var currentDecade = Math.floor(now.getFullYear() / 10) * 10;
+      var ranges = [];
+      for (var decade = currentDecade; decade >= 1980; decade -= 10) {
+        var code = decade >= 2000 ? decade + '_' + (decade + 9) : decade + 'x';
+        ranges.push({ title: decade + '-е', code: code });
+      }
+      ranges.push({ title: 'До 1980-х', code: 'ancient' });
+      var seasons = [];
       for (var offset = -12; offset <= 4; offset++) {
         var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
         var code = getSeason(date);
@@ -1066,7 +1056,7 @@
     }
 
     var filters = {
-      kind: {
+      genres: {
         title: 'Жанры (можно несколько)',
         multi: true,
         items: []
@@ -1166,7 +1156,7 @@
       });
 
       var genreValues = String(filterState.genre || '').split(',').filter(Boolean);
-      filters.kind.items.forEach(function (item) {
+      filters.genres.items.forEach(function (item) {
         item.selected = genreValues.indexOf(String(item.id)) !== -1;
         item.checked = !!item.selected;
       });
@@ -1312,7 +1302,7 @@
     }
 
     function mainFilterMenu() {
-      ['kind', 'type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
+      ['genres', 'type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
         selectedTitle(filters[key]);
       });
       Lampa.Select.show({
@@ -1385,11 +1375,6 @@
           } else if (chosen.disconnectAccount) disconnectShikimori();
         }
       });
-    }
-
-    function renderAccountStatus(anime) {
-      var rate = anime && anime.__user_rate;
-      return rate ? userRateStatusTitle(rate.status) : '';
     }
 
     function reloadCurrent() {
