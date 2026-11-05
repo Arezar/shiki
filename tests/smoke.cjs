@@ -367,7 +367,7 @@ function testCatalogueRetryAfterInitialFailure() {
   assert.ok(firstRequest, 'initial catalogue request should start');
   firstRequest.xhr.reject(503, { message: 'Service unavailable' });
 
-  const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry') !== -1);
+  const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry">') !== -1);
   assert.ok(retry && retry.handlers['hover:enter'], 'failed initial load should expose a remote-friendly retry control');
   retry.handlers['hover:enter']();
   assert.equal(graphqlRequests().length, 2, 'retry should issue another catalogue request');
