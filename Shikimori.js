@@ -368,6 +368,11 @@
                 this._shikiFallback = 1
                 this.src = PLACEHOLDER
             })
+            // On fast/cached failures the image can finish before the handler is attached.
+            // Replay that already-fired failure so the alternate poster URL is still tried.
+            if (img.complete && typeof img.naturalWidth === 'number' && img.naturalWidth === 0) {
+                $(img).triggerHandler('error')
+            }
         })
     }
 
@@ -1805,13 +1810,14 @@
             Lampa.Noty.show(tr('shikimori_empty'))
             return
         }
+        // Prefer the displayed title first: it usually retains the season/part suffix.
         var rawQueries = [
-            card.original_title,
-            card.original_name,
             card.title,
             card.name,
-            stripSeasonSuffix(card.original_title || card.original_name || ''),
-            stripSeasonSuffix(card.title || card.name || '')
+            card.original_title,
+            card.original_name,
+            stripSeasonSuffix(card.title || card.name || ''),
+            stripSeasonSuffix(card.original_title || card.original_name || '')
         ]
         var queries = dedupeQueries(rawQueries)
         if (!queries.length) {
@@ -1831,11 +1837,13 @@
             if (Lampa.Activity && typeof Lampa.Activity.active === 'function') prevActivity = Lampa.Activity.active()
             else if (Lampa.Activity && Lampa.Activity.active) prevActivity = Lampa.Activity.active
         } catch (e) {}
+
         var modalNet = createNetwork(12000)
         var cancelled = false
-        var netFails = 0
         var cardDate = card.release_date || card.first_air_date || ''
         var cardYear = cardDate ? parseInt(String(cardDate).substr(0, 4), 10) : 0
+        var gathered = []
+        var seenIds = {}
 
         try {
             Lampa.Loading.start(function () {
@@ -1848,98 +1856,101 @@
             try { Lampa.Loading.start() } catch (ee) {}
         }
 
+        function animeNames(anime) {
+            return dedupeQueries([anime && anime.name, anime && anime.russian].concat(
+                anime && Array.isArray(anime.english) ? anime.english : [anime && anime.english],
+                anime && Array.isArray(anime.synonyms) ? anime.synonyms : [anime && anime.synonyms]
+            )).map(normalize).filter(Boolean)
+        }
+
+        function isExactPrimaryTitle(anime) {
+            var primary = normalize(queries[0])
+            if (!primary) return false
+            var names = animeNames(anime)
+            return names.indexOf(primary) >= 0
+        }
+
+        function finishSearch() {
+            if (cancelled) return
+            var currentActivity = null
+            try {
+                if (Lampa.Activity && typeof Lampa.Activity.active === 'function') currentActivity = Lampa.Activity.active()
+                else if (Lampa.Activity && Lampa.Activity.active) currentActivity = Lampa.Activity.active
+            } catch (e) {}
+            if (currentActivity && prevActivity && currentActivity !== prevActivity) {
+                cancelled = true
+                try { Lampa.Loading.stop() } catch (e) {}
+                return
+            }
+            try { Lampa.Loading.stop() } catch (e) {}
+            if (!gathered.length) {
+                Lampa.Noty.show(tr('shikimori_empty'))
+                return
+            }
+
+            var exact = gathered.filter(isExactPrimaryTitle)
+            if (exact.length === 1 && exact[0].id) {
+                pushDetails(exact[0])
+                return
+            }
+
+            var sorted = gathered.slice().sort(function (a, b) {
+                var exactA = isExactPrimaryTitle(a) ? 1 : 0
+                var exactB = isExactPrimaryTitle(b) ? 1 : 0
+                if (exactA !== exactB) return exactB - exactA
+                if (!cardYear) return 0
+                var ya = a.aired_on ? Math.abs(cardYear - parseInt(String(a.aired_on).substr(0, 4), 10)) : 99
+                var yb = b.aired_on ? Math.abs(cardYear - parseInt(String(b.aired_on).substr(0, 4), 10)) : 99
+                return ya - yb
+            })
+
+            try {
+                if (Lampa.Select && typeof Lampa.Select.show === 'function') {
+                    Lampa.Select.show({
+                        title: tr('shikimori_choose'),
+                        items: sorted.map(function (a) {
+                            var scoreStr = formatScore(a.score) || '—'
+                            var rawSub = kindTitle(a.kind) + ' · ' +
+                                (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
+                            return {
+                                title: esc((isRu() && a.russian) ? a.russian : a.name),
+                                subtitle: esc(rawSub),
+                                anime: a
+                            }
+                        }),
+                        onSelect: function (item) {
+                            try { Lampa.Select.close() } catch (e) {}
+                            pushDetails(item.anime)
+                        },
+                        onBack: function () {
+                            try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
+                        }
+                    })
+                } else {
+                    Lampa.Noty.show(tr('shikimori_empty'))
+                }
+            } catch (e) {
+                try { Lampa.Noty.show(tr('shikimori_empty')) } catch (ee) {}
+            }
+        }
+
         function tryNext(i) {
             if (cancelled) return
-            if (i >= queries.length || netFails >= 2) {
-                try { Lampa.Loading.stop() } catch (e) {}
-                Lampa.Noty.show(tr('shikimori_empty'))
+            if (i >= queries.length) {
+                finishSearch()
                 return
             }
             shikiSearch(modalNet, queries[i], 1, function (animes) {
                 if (cancelled) return
-                netFails = 0
-                if (!Array.isArray(animes) || !animes.length) {
-                    tryNext(i + 1)
-                    return
+                if (Array.isArray(animes)) {
+                    animes.forEach(function (anime) {
+                        if (!anime || !anime.id || seenIds[String(anime.id)]) return
+                        seenIds[String(anime.id)] = true
+                        gathered.push(anime)
+                    })
                 }
-                var shikiCurCtrl = null
-                try {
-                    if (Lampa.Controller && Lampa.Controller.enabled) {
-                        var shikiEnCur = Lampa.Controller.enabled()
-                        shikiCurCtrl = (shikiEnCur && typeof shikiEnCur === 'object') ? shikiEnCur.name : null
-                    }
-                } catch (e) {}
-                var shikiCurActivity = null
-                try {
-                    if (Lampa.Activity && typeof Lampa.Activity.active === 'function') shikiCurActivity = Lampa.Activity.active()
-                    else if (Lampa.Activity && Lampa.Activity.active) shikiCurActivity = Lampa.Activity.active
-                } catch (e) {}
-                if (shikiCurActivity && prevActivity && shikiCurActivity !== prevActivity) {
-                    cancelled = true
-                    try { Lampa.Loading.stop() } catch (e) {}
-                    return
-                }
-                try { Lampa.Loading.stop() } catch (e) {}
-
-                var queryNorms = queries.map(normalize).filter(Boolean)
-                var singleConfident = false
-                if (animes.length === 1 && animes[0]) {
-                    var candNames = dedupeQueries([animes[0].name, animes[0].russian].concat(
-                        Array.isArray(animes[0].english) ? animes[0].english : [animes[0].english],
-                        Array.isArray(animes[0].synonyms) ? animes[0].synonyms : [animes[0].synonyms]
-                    )).map(normalize)
-                    for (var qi = 0; qi < queryNorms.length && !singleConfident; qi++) {
-                        for (var ci = 0; ci < candNames.length; ci++) {
-                            if (candNames[ci] && (candNames[ci] === queryNorms[qi] || isSubstrTitleMatch(candNames[ci], queryNorms[qi]))) {
-                                singleConfident = true
-                                break
-                            }
-                        }
-                    }
-                }
-
-                if (animes.length === 1 && singleConfident && animes[0] && animes[0].id) {
-                    pushDetails(animes[0])
-                    return
-                }
-
-                var sorted = animes.slice().sort(function (a, b) {
-                    if (!cardYear) return 0
-                    var ya = a.aired_on ? Math.abs(cardYear - parseInt(String(a.aired_on).substr(0, 4), 10)) : 99
-                    var yb = b.aired_on ? Math.abs(cardYear - parseInt(String(b.aired_on).substr(0, 4), 10)) : 99
-                    return ya - yb
-                })
-
-                try {
-                    if (Lampa.Select && typeof Lampa.Select.show === 'function') {
-                        Lampa.Select.show({
-                            title: tr('shikimori_choose'),
-                            items: sorted.map(function (a) {
-                                var scoreStr = formatScore(a.score) || '—'
-                                var rawSub = kindTitle(a.kind) + ' · ' +
-                                    (a.aired_on ? String(a.aired_on).substr(0, 4) : '—') + ' · ★ ' + scoreStr
-                                return {
-                                    title: esc((isRu() && a.russian) ? a.russian : a.name),
-                                    subtitle: esc(rawSub),
-                                    anime: a
-                                }
-                            }),
-                            onSelect: function (item) {
-                                try { Lampa.Select.close() } catch (e) {}
-                                pushDetails(item.anime)
-                            },
-                            onBack: function () {
-                                try { Lampa.Controller.toggle(prevCtrl || 'content') } catch (e) {}
-                            }
-                        })
-                    } else {
-                        Lampa.Noty.show(tr('shikimori_empty'))
-                    }
-                } catch (e) {
-                    try { Lampa.Noty.show(tr('shikimori_empty')) } catch (ee) {}
-                }
+                tryNext(i + 1)
             }, function () {
-                netFails++
                 if (!cancelled) tryNext(i + 1)
             })
         }
