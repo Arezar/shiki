@@ -29,6 +29,7 @@ source = source.replace(startMarker, exportForTests);
 const ajaxCalls = [];
 const storage = {};
 let lastTemplate = null;
+const scrollInstances = [];
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -113,6 +114,7 @@ const Lampa = {
     this.start = function () {};
   },
   Scroll: function () {
+    scrollInstances.push(this);
     this.append = () => {};
     this.render = () => new FakeJQuery('scroll');
     this.minus = () => {};
@@ -234,33 +236,6 @@ function testConcurrentTokenRefresh() {
   assert.equal(storage.lme_shikimori_account_v1.access_token, 'new-access');
 }
 
-function testConcurrentTokenRefresh() {
-  storage.lme_shikimori_account_v1 = {
-    client_id: 'client-id',
-    client_secret: 'client-secret',
-    refresh_token: 'old-refresh'
-  };
-
-  const before = ajaxCalls.length;
-  const received = [];
-  const errors = [];
-  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
-  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
-
-  const requests = ajaxCalls.slice(before).filter(item => item.options.url === 'https://shikimori.io/oauth/token');
-  assert.equal(requests.length, 1, 'parallel callers must share a single refresh request');
-  requests[0].xhr.resolve({
-    access_token: 'new-access',
-    refresh_token: 'new-refresh',
-    expires_in: 86400
-  });
-
-  assert.deepEqual(received, ['new-access', 'new-access']);
-  assert.equal(errors.length, 0);
-  assert.equal(storage.lme_shikimori_account_v1.refresh_token, 'new-refresh');
-  assert.equal(storage.lme_shikimori_account_v1.access_token, 'new-access');
-}
-
 function testUserRateNormalization() {
   const anime = api.normalizeUserRateEntry({
     user_rate: { id: 99, status: 'watching', score: 9, episodes: 12, user_id: 7 },
@@ -272,6 +247,107 @@ function testUserRateNormalization() {
   assert.equal(anime.__user_rate.score, 9);
   assert.equal(anime.__user_rate.episodes, 12);
   assert.equal(api.userRateStatusTitle('completed'), 'Просмотрено');
+}
+
+function testV1AccountRateNormalization() {
+  const anime = api.normalizeUserRateEntry({
+    user_rate: { id: 7, status: 'watching', score: 8, episodes: 4 },
+    anime: {
+      id: 42,
+      name: 'V1 anime',
+      image: { original: '/system/animes/original/42.jpg' },
+      aired_on: '2024-04-11'
+    }
+  });
+  assert.equal(anime.poster.originalUrl, 'https://shikimori.one/system/animes/original/42.jpg');
+  assert.equal(anime.airedOn.date, '2024-04-11');
+  assert.equal(anime.airedOn.year, 2024);
+  assert.equal(anime.season, 'spring 2024');
+}
+
+function testNativeCardBadgesAndIdIsolation() {
+  const appended = [];
+  const view = { append(node) { appended.push(node); } };
+  const root = { querySelector(selector) { return selector === '.card__view' ? view : null; } };
+  let nativeData = null;
+  let enabledModules = [];
+  Lampa.Manifest.app_digital = 300;
+  Lampa.Template.elem = (tag, attrs) => ({ tag, attrs });
+  Lampa.Maker = {
+    make(name, data, configure) {
+      nativeData = data;
+      const module = { only() { enabledModules = Array.from(arguments); return this; } };
+      configure(module);
+      return {
+        menu_list: [],
+        use(hooks) { this.hooks = hooks; },
+        create() { this.hooks.onCreate.call({ html: root }); },
+        render() { return new FakeJQuery('native-card'); },
+        destroy() {}
+      };
+    }
+  };
+
+  const card = new api.Card({
+    id: 42,
+    name: 'Native anime',
+    kind: 'tv',
+    poster: { originalUrl: 'https://example.test/poster.jpg' },
+    score: '8.2',
+    airedOn: { year: 2024, date: '2024-01-01' },
+    __user_rate: { status: 'watching' }
+  }, 'en', { long() {} });
+
+  assert.equal(nativeData.id, 'shiki-42');
+  assert.ok(!enabledModules.includes('Favorite'));
+  assert.ok(!enabledModules.includes('Watched'));
+  assert.ok(!enabledModules.includes('Plugins'));
+  assert.equal(appended.length, 2, 'native DOM card must receive kind and Shikimori status badges');
+  assert.equal(appended[0].attrs.class, 'card__type LMEShikimori__kind');
+  assert.equal(appended[1].attrs.class, 'LMEShikimori__user-status');
+  card.destroy();
+}
+
+function testRestoredFiltersAreStableAcrossPages() {
+  storage.lme_shikimori_filters_v1 = {
+    sort: 'ranked',
+    kind: 'tv',
+    status: 'ongoing',
+    genre: '1,2',
+    seasons: 'winter_2026',
+    score: '8',
+    rating: 'pg_13',
+    duration: 'D',
+    search: 'Saved search'
+  };
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const first = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql').pop();
+  const firstVariables = JSON.parse(first.options.data).variables;
+  assert.equal(firstVariables.page, 1);
+  assert.equal(firstVariables.order, 'ranked');
+  assert.equal(firstVariables.kind, 'tv');
+  assert.equal(firstVariables.status, 'ongoing');
+  assert.equal(firstVariables.genre, '1,2');
+  assert.equal(firstVariables.season, 'winter_2026');
+  assert.equal(firstVariables.score, 8);
+  assert.equal(firstVariables.rating, 'pg_13');
+  assert.equal(firstVariables.duration, 'D');
+  assert.equal(firstVariables.search, 'Saved search');
+
+  first.xhr.resolve({ data: { animes: Array.from({ length: 36 }, (_, index) => ({ id: index + 100, name: 'Anime ' + index })) } });
+  const scroll = scrollInstances[scrollInstances.length - 1];
+  scroll.onEnd();
+  const requests = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
+  const secondVariables = JSON.parse(requests[requests.length - 1].options.data).variables;
+  assert.equal(secondVariables.page, 2);
+  Object.keys(firstVariables).filter(key => key !== 'page').forEach(key => {
+    assert.equal(secondVariables[key], firstVariables[key], 'filter changed between pages for ' + key);
+  });
+  component.destroy();
+  storage.lme_shikimori_filters_v1 = {};
 }
 
 function testLegacyCardFallbackSafety() {
