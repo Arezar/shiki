@@ -337,7 +337,7 @@
     var location = window.location;
     if (!location || !location.pathname) return '';
     var origin = location.origin || (location.protocol && location.host ? location.protocol + '//' + location.host : '');
-    return origin ? String(origin) + String(location.pathname) : '';
+    return /^https:\/\//i.test(String(origin)) ? String(origin) + String(location.pathname) : '';
   }
 
   function clearOAuthCallbackFromAddressBar() {
@@ -403,7 +403,7 @@
         { title: 'Скопировать ссылку для входа ещё раз', copyOAuthUrl: true },
         { title: 'Отменить вход', cancelOAuth: true }
       ],
-      onBack: function () {},
+      onBack: function () { Lampa.Storage.set(OAUTH_STATE_KEY, ''); },
       onSelect: function (choice) {
         if (choice && choice.pasteOAuthRedirect) {
           Lampa.Input.edit({
@@ -414,7 +414,10 @@
           }, function (value) {
             var parsed = parseOAuthRedirect(value);
             var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
-            if (!String(value || '').trim()) return;
+            if (!String(value || '').trim()) {
+              showOAuthContinueMenu(authUrl, config);
+              return;
+            }
             if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
               Lampa.Noty.show('Ссылка не подошла. Нужен полный URL с code и state. Попробуйте ещё раз.');
               showOAuthContinueMenu(authUrl, config);
@@ -426,7 +429,7 @@
                 { title: 'Да, подключить аккаунт', confirmOAuth: true },
                 { title: 'Нет, вернуться', cancelOAuth: true }
               ],
-              onBack: function () {},
+              onBack: function () { showOAuthContinueMenu(authUrl, config); },
               onSelect: function (confirm) {
                 if (confirm && confirm.confirmOAuth) exchangeOAuthCode(parsed, config);
                 else showOAuthContinueMenu(authUrl, config);
