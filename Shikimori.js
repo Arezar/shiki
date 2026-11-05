@@ -113,56 +113,403 @@
     tmdb: {}
   };
 
-  var WATCHLIST_KEY = 'lme_shikimori_watchlist';
-  var WATCHLIST_LIMIT = 300;
 
-  function getWatchlist() {
-    var stored = Lampa.Storage.get(WATCHLIST_KEY, []);
-    if (!Array.isArray(stored)) return [];
-    var seen = {};
-    return stored.filter(function (anime) {
-      if (!anime || anime.id == null) return false;
-      var id = String(anime.id);
-      if (seen[id]) return false;
-      seen[id] = true;
-      return true;
-    }).slice(-WATCHLIST_LIMIT);
+  var ACCOUNT_STORAGE_KEY = 'lme_shikimori_account_v1';
+  var FILTERS_STORAGE_KEY = 'lme_shikimori_filters_v1';
+  var OAUTH_STATE_KEY = 'lme_shikimori_oauth_state';
+
+  function readAccount() {
+    var value = Lampa.Storage.get(ACCOUNT_STORAGE_KEY, {});
+    return value && typeof value === 'object' ? value : {};
   }
 
-  function toggleWatchlist(anime) {
-    if (!anime || anime.id == null) return false;
-    var list = getWatchlist();
-    var id = String(anime.id);
-    var existing = list.findIndex(function (item) { return String(item.id) === id; });
-    if (existing !== -1) {
-      list.splice(existing, 1);
-      Lampa.Storage.set(WATCHLIST_KEY, list);
-      return false;
+  function writeAccount(value) {
+    Lampa.Storage.set(ACCOUNT_STORAGE_KEY, value || {});
+  }
+
+  function readOAuthConfig() {
+    var account = readAccount();
+    return {
+      client_id: String(account.client_id || ''),
+      client_secret: String(account.client_secret || ''),
+      redirect_uri: String(account.redirect_uri || '')
+    };
+  }
+
+  function saveOAuthConfig(config) {
+    var account = readAccount();
+    account.client_id = String(config.client_id || '').trim();
+    account.client_secret = String(config.client_secret || '').trim();
+    account.redirect_uri = String(config.redirect_uri || '').trim();
+    writeAccount(account);
+  }
+
+  function accountIsConnected() {
+    var account = readAccount();
+    return !!(account.access_token && account.user && account.user.id);
+  }
+
+  function encodeForm(data) {
+    return Object.keys(data || {}).map(function (key) {
+      return encodeURIComponent(key) + '=' + encodeURIComponent(data[key] == null ? '' : String(data[key]));
+    }).join('&');
+  }
+
+  function requestOAuthToken(payload, success, error) {
+    $.ajax({
+      url: 'https://shikimori.one/oauth/token',
+      method: 'POST',
+      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+      processData: false,
+      dataType: 'json',
+      timeout: 20000,
+      data: encodeForm(payload),
+      success: success,
+      error: error
+    });
+  }
+
+  function saveTokenResponse(response, previous) {
+    if (!response || !response.access_token) throw new Error('Shikimori не вернул access_token');
+    var account = previous || readAccount();
+    account.access_token = response.access_token;
+    if (response.refresh_token) account.refresh_token = response.refresh_token;
+    account.expires_at = Date.now() + (Math.max(60, parseInt(response.expires_in, 10) || 86400) * 1000);
+    writeAccount(account);
+    return account;
+  }
+
+  function refreshAccessToken(success, error) {
+    var account = readAccount();
+    var config = readOAuthConfig();
+    if (!account.refresh_token || !config.client_id || !config.client_secret) {
+      if (typeof error === 'function') error({ message: 'Нет refresh token. Подключите аккаунт Shikimori заново.' });
+      return;
     }
 
-    list.push({
-      id: anime.id,
-      malId: anime.malId || null,
-      name: anime.name || '',
-      russian: anime.russian || '',
-      licenseNameRu: anime.licenseNameRu || '',
-      english: anime.english || '',
-      japanese: anime.japanese || '',
-      kind: anime.kind || '',
-      score: anime.score == null ? null : anime.score,
-      status: anime.status || '',
-      season: anime.season || '',
-      airedOn: anime.airedOn && anime.airedOn.year ? { year: anime.airedOn.year } : null,
-      poster: anime.poster && anime.poster.originalUrl ? { originalUrl: anime.poster.originalUrl } : null,
-      savedAt: Date.now()
-    });
-    Lampa.Storage.set(WATCHLIST_KEY, list.slice(-WATCHLIST_LIMIT));
-    return true;
+    requestOAuthToken({
+      grant_type: 'refresh_token',
+      client_id: config.client_id,
+      client_secret: config.client_secret,
+      refresh_token: account.refresh_token
+    }, function (response) {
+      try {
+        saveTokenResponse(response, account);
+        if (typeof success === 'function') success(response.access_token);
+      } catch (exception) {
+        if (typeof error === 'function') error({ message: exception.message });
+      }
+    }, error);
   }
 
-  function isWatchlisted(id) {
-    if (id == null) return false;
-    return getWatchlist().some(function (anime) { return String(anime.id) === String(id); });
+  function ensureAccessToken(success, error) {
+    var account = readAccount();
+    if (account.access_token && account.expires_at && account.expires_at > Date.now() + 60000) {
+      success(account.access_token);
+      return;
+    }
+    refreshAccessToken(success, error);
+  }
+
+  function authenticatedRequest(options, success, error, retried) {
+    ensureAccessToken(function (token) {
+      var requestOptions = $.extend({}, options, {
+        timeout: options.timeout || 20000,
+        headers: $.extend({}, options.headers || {}, {
+          Authorization: 'Bearer ' + token
+        }),
+        success: success,
+        error: function (xhr, status, message) {
+          if (xhr && xhr.status === 401 && !retried) {
+            refreshAccessToken(function () {
+              authenticatedRequest(options, success, error, true);
+            }, error);
+            return;
+          }
+          if (typeof error === 'function') error(xhr, status, message);
+        }
+      });
+      $.ajax(requestOptions);
+    }, error);
+  }
+
+  function getShikimoriIdentity(success, error) {
+    authenticatedRequest({
+      url: 'https://shikimori.one/api/users/whoami',
+      method: 'GET',
+      dataType: 'json'
+    }, function (user) {
+      if (!user || user.id == null) {
+        if (typeof error === 'function') error({ message: 'Не удалось определить пользователя Shikimori' });
+        return;
+      }
+      var account = readAccount();
+      account.user = user;
+      writeAccount(account);
+      if (typeof success === 'function') success(user);
+    }, error);
+  }
+
+  function generateOAuthState() {
+    var cryptoObject = window.crypto;
+    if (!cryptoObject || typeof cryptoObject.getRandomValues !== 'function') {
+      throw new Error('В этой версии Lampa недоступен безопасный генератор случайных чисел');
+    }
+    var bytes = new Uint8Array(24);
+    cryptoObject.getRandomValues(bytes);
+    return Array.prototype.map.call(bytes, function (byte) {
+      return ('0' + byte.toString(16)).slice(-2);
+    }).join('');
+  }
+
+  function parseOAuthRedirect(value) {
+    var input = String(value || '').trim();
+    var result = { code: '', state: '' };
+    if (!input) return result;
+    var query = input;
+    var question = query.indexOf('?');
+    if (question !== -1) query = query.slice(question + 1);
+    var hash = query.indexOf('#');
+    if (hash !== -1) query = query.slice(0, hash);
+    query.split('&').forEach(function (part) {
+      if (!part) return;
+      var pair = part.split('=');
+      var key = decodeURIComponent(pair.shift() || '');
+      var val = decodeURIComponent(pair.join('=') || '');
+      if (key === 'code') result.code = val;
+      if (key === 'state') result.state = val;
+    });
+    if (!result.code && input.indexOf('://') === -1 && input.indexOf('?') === -1 && input.indexOf('=') === -1) {
+      result.code = input;
+    }
+    return result;
+  }
+
+  function editOAuthSettings(done) {
+    var config = readOAuthConfig();
+    function prompt(title, key, next) {
+      Lampa.Input.edit({
+        title: title,
+        value: config[key],
+        free: true,
+        nosave: true
+      }, function (value) {
+        config[key] = String(value || '').trim();
+        next();
+      });
+    }
+    prompt('Shikimori OAuth — Client ID', 'client_id', function () {
+      if (!config.client_id) return;
+      prompt('Shikimori OAuth — Client Secret', 'client_secret', function () {
+        if (!config.client_secret) return;
+        prompt('Shikimori OAuth — Redirect URI (точно как в приложении Shikimori)', 'redirect_uri', function () {
+          if (!config.redirect_uri) return;
+          saveOAuthConfig(config);
+          Lampa.Noty.show('Параметры OAuth сохранены локально на этом устройстве');
+          if (typeof done === 'function') done(config);
+        });
+      });
+    });
+  }
+
+  function connectShikimori() {
+    var config = readOAuthConfig();
+    if (!config.client_id || !config.client_secret || !config.redirect_uri) {
+      editOAuthSettings(function () { connectShikimori(); });
+      return;
+    }
+    if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
+      Lampa.Noty.show('Для OAuth-входа нужна версия Lampa с экранной клавиатурой');
+      return;
+    }
+
+    var state;
+    try {
+      state = generateOAuthState();
+    } catch (exception) {
+      Lampa.Noty.show(exception.message);
+      return;
+    }
+    Lampa.Storage.set(OAUTH_STATE_KEY, state);
+
+    var authUrl = 'https://shikimori.one/oauth/authorize?' + encodeForm({
+      client_id: config.client_id,
+      redirect_uri: config.redirect_uri,
+      response_type: 'code',
+      scope: 'user_rates',
+      state: state
+    });
+
+    try {
+      window.open(authUrl, '_blank');
+    } catch (exception) {
+      console.warn('Shikimori: не удалось открыть окно OAuth', exception);
+    }
+
+    Lampa.Noty.show('Разрешите доступ Shikimori и скопируйте полный URL после перенаправления, включая code и state');
+    Lampa.Input.edit({
+      title: 'Вставьте полный URL перенаправления Shikimori',
+      value: '',
+      free: true,
+      nosave: true
+    }, function (value) {
+      var parsed = parseOAuthRedirect(value);
+      var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
+      if (!parsed.code || !parsed.state || parsed.state !== expectedState) {
+        Lampa.Noty.show('Код авторизации или state не совпадает. Повторите подключение и вставьте полный URL.');
+        return;
+      }
+
+      requestOAuthToken({
+        grant_type: 'authorization_code',
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+        code: parsed.code,
+        redirect_uri: config.redirect_uri
+      }, function (response) {
+        try {
+          saveTokenResponse(response);
+          Lampa.Storage.set(OAUTH_STATE_KEY, '');
+          getShikimoriIdentity(function (user) {
+            Lampa.Noty.show('Аккаунт Shikimori подключён: ' + (user.nickname || user.name || user.id));
+            Lampa.Activity.push({
+              url: '',
+              title: 'Мой список Shikimori',
+              component: 'LMEShikimori',
+              page: 1,
+              accountList: true
+            });
+          }, function (error) {
+            Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + (error && error.message || 'ошибка API'));
+          });
+        } catch (exception) {
+          Lampa.Noty.show(exception.message);
+        }
+      }, function (xhr, status, message) {
+        var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
+        Lampa.Noty.show('OAuth Shikimori: ' + (text || message || status || 'ошибка обмена кода'));
+      });
+    });
+  }
+
+  function disconnectShikimori() {
+    var config = readOAuthConfig();
+    writeAccount({
+      client_id: config.client_id,
+      client_secret: config.client_secret,
+      redirect_uri: config.redirect_uri
+    });
+    Lampa.Noty.show('Аккаунт Shikimori отключён на этом устройстве');
+  }
+
+  function normalizeUserRateEntry(entry) {
+    entry = entry || {};
+    var rate = entry.user_rate || entry.userRate || entry;
+    var target = entry.anime || entry.target || entry;
+    var anime = $.extend({}, target);
+    anime.__user_rate = {
+      id: rate.id || entry.user_rate_id || null,
+      user_id: rate.user_id || null,
+      target_id: rate.target_id || anime.id,
+      status: rate.status || '',
+      score: parseInt(rate.score, 10) || 0,
+      episodes: parseInt(rate.episodes, 10) || 0,
+      rewatches: parseInt(rate.rewatches, 10) || 0
+    };
+    return anime;
+  }
+
+  function loadAccountRates(page, status, success, error) {
+    var account = readAccount();
+    if (!account.user || account.user.id == null) {
+      getShikimoriIdentity(function () {
+        loadAccountRates(page, status, success, error);
+      }, error);
+      return;
+    }
+    var query = 'page=' + encodeURIComponent(page) + '&limit=50';
+    if (status) query += '&status=' + encodeURIComponent(status);
+    authenticatedRequest({
+      url: 'https://shikimori.one/api/users/' + encodeURIComponent(account.user.id) + '/anime_rates?' + query,
+      method: 'GET',
+      dataType: 'json'
+    }, function (result) {
+      if (typeof success === 'function') success((Array.isArray(result) ? result : []).map(normalizeUserRateEntry));
+    }, error);
+  }
+
+  function findUserRate(anime, success, error) {
+    var account = readAccount();
+    if (!account.user || account.user.id == null) {
+      getShikimoriIdentity(function () {
+        findUserRate(anime, success, error);
+      }, error);
+      return;
+    }
+    authenticatedRequest({
+      url: 'https://shikimori.one/api/v2/user_rates?user_id=' + encodeURIComponent(account.user.id) +
+        '&target_type=Anime&target_id=' + encodeURIComponent(anime.id) + '&limit=1',
+      method: 'GET',
+      dataType: 'json'
+    }, function (rates) {
+      var rate = Array.isArray(rates) && rates.length ? rates[0] : anime.__user_rate || null;
+      if (typeof success === 'function') success(rate);
+    }, error);
+  }
+
+  function saveUserRate(anime, rate, changes, success, error) {
+    var account = readAccount();
+    if (!account.user || account.user.id == null) {
+      getShikimoriIdentity(function () {
+        saveUserRate(anime, rate, changes, success, error);
+      }, error);
+      return;
+    }
+    var isUpdate = rate && rate.id != null;
+    var url = isUpdate
+      ? 'https://shikimori.one/api/v2/user_rates/' + encodeURIComponent(rate.id)
+      : 'https://shikimori.one/api/v2/user_rates';
+    var payload = isUpdate ? { user_rate: changes } : {
+      user_rate: $.extend({
+        user_id: account.user.id,
+        target_id: anime.id,
+        target_type: 'Anime',
+        status: 'planned',
+        score: 0
+      }, changes || {})
+    };
+    authenticatedRequest({
+      url: url,
+      method: isUpdate ? 'PATCH' : 'POST',
+      contentType: 'application/json; charset=UTF-8',
+      processData: false,
+      dataType: 'json',
+      data: JSON.stringify(payload)
+    }, success, error);
+  }
+
+  function deleteUserRate(rate, success, error) {
+    if (!rate || rate.id == null) {
+      if (typeof error === 'function') error({ message: 'Запись Shikimori не найдена' });
+      return;
+    }
+    authenticatedRequest({
+      url: 'https://shikimori.one/api/v2/user_rates/' + encodeURIComponent(rate.id),
+      method: 'DELETE',
+      dataType: 'text'
+    }, success, error);
+  }
+
+  function userRateStatusTitle(status) {
+    var names = {
+      planned: 'Запланировано',
+      watching: 'Смотрю',
+      rewatching: 'Пересматриваю',
+      completed: 'Просмотрено',
+      on_hold: 'Отложено',
+      dropped: 'Брошено'
+    };
+    return names[status] || 'Не задано';
   }
 
   function main(params, oncomplite, onerror, network) {
@@ -178,10 +525,14 @@
       '    japanese',
       '    kind',
       '    score',
+      '    rating',
+      '    episodes',
+      '    episodesAired',
+      '    duration',
       '    status',
       '    season',
-      '    airedOn { year }',
-      '    poster { originalUrl }',
+      '    airedOn { year date }',
+      '    poster { originalUrl mainUrl }',
       '  }',
       '}'
     ].join('\n');
@@ -465,112 +816,531 @@
     toggleWatchlist: toggleWatchlist
   };
 
-  function Card(data, userLang) {
-    data = data || {};
 
-    var season = data.season
-      ? String(data.season).replace('_', ' ').replace(/^\w/, function (character) {
-          return character.toUpperCase();
-        })
-      : '';
-    var airedYear = data.airedOn && data.airedOn.year ? data.airedOn.year : '';
+  function Card(data, userLang, handlers) {
+    data = data || {};
+    handlers = handlers || {};
+
     var title = userLang === 'ru'
       ? (data.russian || data.licenseNameRu || data.name || data.japanese)
       : (data.name || data.english || data.japanese || data.russian);
-    var item = Lampa.Template.get('LMEShikimori-Card', {
-      img: safeImageUrl(data.poster && data.poster.originalUrl),
-      type: escapeHtml(data.kind ? String(data.kind).toUpperCase() : 'ANIME'),
-      status: escapeHtml(data.status ? String(data.status).charAt(0).toUpperCase() + String(data.status).slice(1) : ''),
-      rate: escapeHtml(data.score == null ? '—' : data.score),
-      saved: isWatchlisted(data.id) ? '★' : '',
-      title: escapeHtml(title || 'Без названия'),
-      season: escapeHtml(season || airedYear || '')
-    });
+    var year = data.airedOn && data.airedOn.year ? String(data.airedOn.year) : '';
+    var poster = data.poster && (data.poster.originalUrl || data.poster.mainUrl)
+      ? safeImageUrl(data.poster.originalUrl || data.poster.mainUrl)
+      : '';
+    var native = !!(Lampa.Maker && Lampa.Maker.make && Lampa.Manifest && Number(Lampa.Manifest.app_digital) >= 300);
+    var item = null;
+    var element = null;
+    var kindTitle = String(data.kind || 'anime').replace(/_/g, ' ').toUpperCase();
+
+    if (native) {
+      var cardData = {
+        id: data.id,
+        title: title || 'Без названия',
+        name: title || 'Без названия',
+        poster: poster,
+        vote_average: parseFloat(data.score) || 0,
+        release_date: data.airedOn && data.airedOn.date
+          ? data.airedOn.date
+          : (year ? year + '-01-01' : ''),
+        original_name: ''
+      };
+
+      item = Lampa.Maker.make('Card', cardData, function (module) {
+        return module.only('Card', 'Callback', 'Ratting', 'Release', 'Favorite', 'Watched', 'Style', 'Menu', 'Plugins', 'Lgbt');
+      });
+      item.use({
+        onCreate: function () {
+          var view = this.html && this.html.find('.card__view');
+          if (view && view.length && Lampa.Template && Lampa.Template.elem) {
+            view.append(Lampa.Template.elem('div', {
+              class: 'card__type LMEShikimori__kind',
+              text: kindTitle
+            }));
+            if (data.__user_rate) {
+              view.append(Lampa.Template.elem('div', {
+                class: 'LMEShikimori__user-status',
+                text: userRateStatusTitle(data.__user_rate.status)
+              }));
+            }
+          }
+        },
+        onFocus: function () {
+          if (typeof handlers.focus === 'function') handlers.focus(this, data);
+        },
+        onEnter: function () {
+          if (typeof handlers.enter === 'function') handlers.enter(this, data);
+        },
+        onLong: function () {
+          if (typeof handlers.long === 'function') handlers.long(this, data);
+        }
+      });
+      item.create();
+      element = item.render(true);
+    } else {
+      element = Lampa.Template.get('LMEShikimori-Card', {
+        img: poster,
+        type: escapeHtml(kindTitle),
+        status: escapeHtml(data.__user_rate ? userRateStatusTitle(data.__user_rate.status) : ''),
+        rate: escapeHtml(data.score == null ? '—' : data.score),
+        title: escapeHtml(title || 'Без названия'),
+        season: escapeHtml(data.season || year || '')
+      });
+      element.on('hover:focus', function () {
+        if (typeof handlers.focus === 'function') handlers.focus(null, data);
+      }).on('hover:enter', function () {
+        if (typeof handlers.enter === 'function') handlers.enter(null, data);
+      }).on('hover:long', function () {
+        if (typeof handlers.long === 'function') handlers.long(null, data);
+      });
+    }
 
     this.render = function () {
-      return item;
+      return native ? item.render(true) : element;
     };
 
     this.destroy = function () {
-      if (item && item.remove) item.remove();
+      if (native && item && typeof item.destroy === 'function') item.destroy();
+      else if (element && element.remove) element.remove();
     };
   }
 
   function Component$1(object) {
+    object = object || {};
     var userLang = Lampa.Storage.field('language') || 'en';
-    var network = new NetworkManager(15000);
+    var network = new NetworkManager(20000);
     var lookupNetwork = new NetworkManager(15000);
-    var scroll = new Lampa.Scroll({
-      mask: true,
-      over: true,
-      step: 250
-    });
+    var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div><div class='LMEShikimori__watchlist simple-button simple-button--filter selector'>My list</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filters</div><div class='LMEShikimori__account simple-button simple-button--filter selector'>Shikimori account</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
-    var active, last;
     var inited = false;
     var loading = false;
     var hasMore = true;
     var currentPage = 0;
-    var pageSize = 36;
+    var pageSize = object.accountList ? 50 : 36;
     var headerReady = false;
-    var watchlistButton = null;
+    var last = null;
     var self = this;
-
-    function updateWatchlistButton() {
-      if (watchlistButton) watchlistButton.text('My list (' + getWatchlist().length + ')');
-    }
-
+    var filterDefaults = Lampa.Storage.get(FILTERS_STORAGE_KEY, {}) || {};
+    var filterState = $.extend({}, filterDefaults, object);
+    var accountList = !!object.accountList;
 
     function getSeason(date) {
       var month = date.getMonth();
       var year = date.getFullYear();
-      var seasons = ['winter', 'spring', 'summer', 'fall'];
       var seasonIndex = Math.floor(((month + 1) % 12) / 3);
-      return seasons[seasonIndex] + '_' + (month === 11 ? year + 1 : year);
-    }
-
-    function generateDynamicSeasons() {
-      var seasons = new Set();
-      var now = new Date();
-
-      for (var i = 0; i < 4; i++) {
-        var nextDate = new Date(now.getTime());
-        nextDate.setDate(1);
-        nextDate.setMonth(nextDate.getMonth() + i * 3);
-        seasons.add(getSeason(nextDate));
-      }
-
-      return Array.from(seasons);
-    }
-
-    function generateYearRanges() {
-      var currentYear = new Date().getFullYear();
-      var ranges = [];
-
-      for (var startYear = currentYear; startYear >= 2000; startYear -= 10) {
-        var endYear = Math.max(startYear - 9, 2000);
-        ranges.push(endYear + '_' + startYear);
-      }
-
-      ranges.push('199x', '198x', 'ancient');
-      return ranges;
+      var names = ['winter', 'spring', 'summer', 'fall'];
+      return names[seasonIndex] + '_' + (month === 11 ? year + 1 : year);
     }
 
     function createSeasonItems() {
-      var all = generateDynamicSeasons().concat(generateYearRanges());
-      var unique = all.filter(function (season, index) {
-        return all.indexOf(season) === index;
+      var seasons = [];
+      var now = new Date();
+      for (var offset = -12; offset <= 4; offset++) {
+        var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
+        var code = getSeason(date);
+        if (seasons.indexOf(code) === -1) seasons.push(code);
+      }
+      return seasons.map(function (code) {
+        return { title: code.replace('_', ' '), code: code };
+      });
+    }
+
+    var filters = {
+      kind: {
+        title: 'Жанры (можно несколько)',
+        multi: true,
+        items: []
+      },
+      type: {
+        title: 'Тип аниме',
+        items: [
+          { title: 'TV Series', code: 'tv' },
+          { title: 'Movie', code: 'movie' },
+          { title: 'OVA', code: 'ova' },
+          { title: 'ONA', code: 'ona' },
+          { title: 'Special', code: 'special' },
+          { title: 'TV Special', code: 'tv_special' },
+          { title: 'Music', code: 'music' },
+          { title: 'PV', code: 'pv' },
+          { title: 'CM', code: 'cm' }
+        ]
+      },
+      status: {
+        title: 'Статус выхода',
+        items: [
+          { title: 'Анонс', code: 'anons' },
+          { title: 'Выходит', code: 'ongoing' },
+          { title: 'Вышло', code: 'released' }
+        ]
+      },
+      score: {
+        title: 'Минимальная оценка Shikimori',
+        items: [
+          { title: 'Любая оценка', code: '' },
+          { title: '6+', code: '6' },
+          { title: '7+', code: '7' },
+          { title: '8+', code: '8' },
+          { title: '9+', code: '9' }
+        ]
+      },
+      rating: {
+        title: 'Возрастной рейтинг',
+        items: [
+          { title: 'Любой рейтинг', code: '' },
+          { title: 'G — для всех', code: 'g' },
+          { title: 'PG — детям', code: 'pg' },
+          { title: 'PG-13 — подросткам', code: 'pg_13' },
+          { title: 'R — 17+', code: 'r' },
+          { title: 'R+ — 18+', code: 'r_plus' }
+        ]
+      },
+      seasons: {
+        title: 'Сезон / год',
+        items: createSeasonItems()
+      },
+      sort: {
+        title: 'Сортировка',
+        items: [
+          { title: 'По рейтингу', code: 'ranked' },
+          { title: 'По популярности', code: 'popularity' },
+          { title: 'По дате выхода', code: 'aired_on' },
+          { title: 'По названию', code: 'name' },
+          { title: 'По количеству эпизодов', code: 'episodes' },
+          { title: 'По типу', code: 'kind' },
+          { title: 'По статусу', code: 'status' },
+          { title: 'Сначала новые', code: 'id_desc' },
+          { title: 'Сначала старые', code: 'id' },
+          { title: 'Случайно', code: 'random' }
+        ]
+      }
+    };
+
+    function restoreFilterSelection() {
+      var singleValues = {
+        type: filterState.kind,
+        status: filterState.status,
+        score: filterState.score,
+        rating: filterState.rating,
+        seasons: filterState.seasons,
+        sort: filterState.sort
+      };
+      Object.keys(singleValues).forEach(function (key) {
+        var filter = filters[key];
+        if (!filter) return;
+        filter.items.forEach(function (item) {
+          item.selected = String(item.code) === String(singleValues[key] == null ? '' : singleValues[key]);
+        });
       });
 
-      return unique.map(function (season) {
-        return {
-          code: season,
-          title: season.replace(/_/g, '-')
+      var genreValues = String(filterState.genre || '').split(',').filter(Boolean);
+      filters.kind.items.forEach(function (item) {
+        item.selected = genreValues.indexOf(String(item.id)) !== -1;
+      });
+    }
+
+    function selectedTitle(filter) {
+      var titles = [];
+      (filter.items || []).forEach(function (item) {
+        if (item.selected) titles.push(item.title);
+      });
+      filter.subtitle = titles.length ? titles.join(', ') : 'Не выбрано';
+    }
+
+    function selectedSingle(filter, value) {
+      filter.items.forEach(function (item) {
+        item.selected = String(item.code) === String(value == null ? '' : value);
+      });
+    }
+
+    function loadGenres() {
+      function ready(response) {
+        runtimeCache.genres = (Array.isArray(response) ? response : []).filter(function (item) {
+          return item && item.entry_type === 'Anime';
+        }).map(function (item) {
+          return $.extend({}, item, { title: item.russian || item.name || String(item.id) });
+        });
+        filters.kind.items = runtimeCache.genres.map(function (item) {
+          return $.extend({}, item, { code: String(item.id), checkbox: true });
+        });
+        restoreFilterSelection();
+      }
+      if (runtimeCache.genres) ready(runtimeCache.genres);
+      else network.get('https://shikimori.one/api/genres', ready, function (error) {
+        console.warn('Shikimori: не удалось загрузить жанры', error);
+      });
+    }
+
+    function buildFilterParams() {
+      var params = {};
+      var genres = filters.kind.items.filter(function (item) { return item.selected; }).map(function (item) { return String(item.id); });
+      if (genres.length) params.genre = genres.join(',');
+      if (filterState.search) params.search = String(filterState.search);
+      ['type', 'status', 'score', 'rating', 'seasons', 'sort'].forEach(function (key) {
+        var chosen = filters[key].items.filter(function (item) { return item.selected; })[0];
+        if (chosen && chosen.code !== '') {
+          var apiKey = key === 'type' ? 'kind' : key;
+          params[apiKey] = chosen.code;
+        }
+      });
+      return params;
+    }
+
+    function persistFilters() {
+      var params = buildFilterParams();
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, params);
+      return params;
+    }
+
+    function openSingleFilter(key, onReturn) {
+      var filter = filters[key];
+      selectedTitle(filter);
+      Lampa.Select.show({
+        title: filter.title,
+        items: filter.items,
+        onBack: onReturn,
+        onSelect: function (chosen) {
+          selectedSingle(filter, chosen && chosen.code);
+          onReturn();
+        }
+      });
+    }
+
+    function openGenreFilter(onReturn) {
+      selectedTitle(filters.kind);
+      Lampa.Select.show({
+        title: filters.kind.title,
+        items: filters.kind.items,
+        onBack: onReturn,
+        onSelect: function (chosen) {
+          if (chosen) chosen.selected = !chosen.selected;
+          openGenreFilter(onReturn);
+        }
+      });
+    }
+
+    function openTitleSearch() {
+      if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
+        Lampa.Noty.show('В этой версии Lampa недоступен поиск с клавиатуры');
+        return;
+      }
+      Lampa.Input.edit({
+        title: 'Поиск аниме на Shikimori',
+        value: filterState.search || '',
+        free: true,
+        nosave: true
+      }, function (value) {
+        filterState.search = String(value || '').trim();
+        mainFilterMenu();
+      });
+    }
+
+    function applyFilters() {
+      var params = persistFilters();
+      params.url = '';
+      params.title = params.search ? 'Shikimori: ' + params.search : 'Shikimori';
+      params.component = 'LMEShikimori';
+      params.page = 1;
+      Lampa.Activity.push(params);
+    }
+
+    function resetFilters() {
+      filterState = {};
+      Object.keys(filters).forEach(function (key) {
+        filters[key].items.forEach(function (item) { item.selected = false; });
+      });
+      filterState.sort = 'ranked';
+      selectedSingle(filters.sort, 'ranked');
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: 'ranked' });
+      mainFilterMenu();
+    }
+
+    function mainFilterMenu() {
+      ['kind', 'type', 'status', 'score', 'rating', 'seasons', 'sort'].forEach(function (key) {
+        selectedTitle(filters[key]);
+      });
+      Lampa.Select.show({
+        title: 'Фильтры Shikimori',
+        items: [
+          { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
+          { title: 'Поиск по названию', subtitle: filterState.search || 'Не задан', searchAnimes: true },
+          filters.kind,
+          filters.type,
+          filters.status,
+          filters.score,
+          filters.rating,
+          filters.seasons,
+          filters.sort,
+          { title: 'Сбросить все фильтры', resetFilters: true }
+        ],
+        onBack: function () { Lampa.Controller.toggle('content'); },
+        onSelect: function (chosen) {
+          if (chosen && chosen.applyFilters) applyFilters();
+          else if (chosen && chosen.searchAnimes) openTitleSearch();
+          else if (chosen && chosen.resetFilters) resetFilters();
+          else if (chosen === filters.kind) openGenreFilter(mainFilterMenu);
+          else if (chosen === filters.type) openSingleFilter('type', mainFilterMenu);
+          else if (chosen === filters.status) openSingleFilter('status', mainFilterMenu);
+          else if (chosen === filters.score) openSingleFilter('score', mainFilterMenu);
+          else if (chosen === filters.rating) openSingleFilter('rating', mainFilterMenu);
+          else if (chosen === filters.seasons) openSingleFilter('seasons', mainFilterMenu);
+          else if (chosen === filters.sort) openSingleFilter('sort', mainFilterMenu);
+        }
+      });
+    }
+
+    function accountMenu() {
+      var account = readAccount();
+      var user = account.user || {};
+      var items = [];
+      if (accountIsConnected()) {
+        items.push({ title: 'Мой список аниме', subtitle: (user.nickname || user.name || 'Shikimori'), openAccountList: true });
+        items.push({ title: 'Смотрю', subtitle: 'watching', accountStatus: 'watching' });
+        items.push({ title: 'Запланировано', subtitle: 'planned', accountStatus: 'planned' });
+        items.push({ title: 'Просмотрено', subtitle: 'completed', accountStatus: 'completed' });
+        items.push({ title: 'Отложено', subtitle: 'on_hold', accountStatus: 'on_hold' });
+        items.push({ title: 'Брошено', subtitle: 'dropped', accountStatus: 'dropped' });
+        items.push({ title: 'Пересматриваю', subtitle: 'rewatching', accountStatus: 'rewatching' });
+        items.push({ title: 'Обновить профиль и токен', refreshAccount: true });
+        items.push({ title: 'Отключить аккаунт', disconnectAccount: true });
+      } else {
+        items.push({ title: 'Подключить аккаунт Shikimori', connectAccount: true });
+        items.push({ title: 'У меня уже есть OAuth-настройки', connectAccount: true });
+      }
+      items.push({ title: 'Настроить OAuth-приложение', configureOAuth: true });
+      Lampa.Select.show({
+        title: accountIsConnected() ? 'Shikimori — ' + (user.nickname || user.name || 'аккаунт') : 'Аккаунт Shikimori',
+        items: items,
+        onBack: function () { Lampa.Controller.toggle('content'); },
+        onSelect: function (chosen) {
+          if (chosen.openAccountList) {
+            Lampa.Activity.push({ url: '', title: 'Мой список Shikimori', component: 'LMEShikimori', page: 1, accountList: true });
+          } else if (chosen.accountStatus) {
+            Lampa.Activity.push({ url: '', title: 'Shikimori: ' + userRateStatusTitle(chosen.accountStatus), component: 'LMEShikimori', page: 1, accountList: true, accountStatus: chosen.accountStatus });
+          } else if (chosen.connectAccount) connectShikimori();
+          else if (chosen.configureOAuth) editOAuthSettings();
+          else if (chosen.refreshAccount) {
+            getShikimoriIdentity(function (profile) {
+              Lampa.Noty.show('Профиль обновлён: ' + (profile.nickname || profile.name || profile.id));
+            }, function (error) {
+              Lampa.Noty.show('Не удалось обновить профиль: ' + (error && error.message || 'ошибка'));
+            });
+          } else if (chosen.disconnectAccount) disconnectShikimori();
+        }
+      });
+    }
+
+    function renderAccountStatus(anime) {
+      var rate = anime && anime.__user_rate;
+      return rate ? userRateStatusTitle(rate.status) : '';
+    }
+
+    function reloadCurrent() {
+      if (!inited) return;
+      network.clear();
+      lookupNetwork.clear();
+      items.forEach(function (item) { item.destroy(); });
+      items = [];
+      seenIds = {};
+      body.empty();
+      currentPage = 0;
+      hasMore = true;
+      loading = false;
+      self.activity.loader(true);
+      loadPage(1);
+    }
+
+    function saveOrUpdateRate(anime, rate, changes) {
+      saveUserRate(anime, rate, changes, function (result) {
+        var normalized = result && result.user_rate ? result.user_rate : result;
+        anime.__user_rate = {
+          id: normalized && normalized.id || rate && rate.id || null,
+          status: normalized && normalized.status || changes.status || rate && rate.status || 'planned',
+          score: normalized && normalized.score != null ? normalized.score : (changes.score != null ? changes.score : rate && rate.score || 0),
+          episodes: normalized && normalized.episodes != null ? normalized.episodes : (changes.episodes != null ? changes.episodes : rate && rate.episodes || 0)
         };
+        Lampa.Noty.show('Список Shikimori обновлён');
+        if (accountList) reloadCurrent();
+      }, function (xhr, status, message) {
+        var apiMessage = xhr && xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message);
+        Lampa.Noty.show('Не удалось обновить список Shikimori: ' + (apiMessage || message || status || 'ошибка API') +
+          '. Проверьте scope user_rates в OAuth-приложении.');
+      });
+    }
+
+    function openRateEditor(anime) {
+      if (!accountIsConnected()) {
+        Lampa.Noty.show('Сначала подключите аккаунт Shikimori в меню аккаунта');
+        return;
+      }
+      findUserRate(anime, function (rate) {
+        var statuses = [
+          { title: 'Запланировано', code: 'planned' },
+          { title: 'Смотрю', code: 'watching' },
+          { title: 'Пересматриваю', code: 'rewatching' },
+          { title: 'Просмотрено', code: 'completed' },
+          { title: 'Отложено', code: 'on_hold' },
+          { title: 'Брошено', code: 'dropped' }
+        ];
+        var menu = [
+          { title: 'Статус просмотра', statusMenu: true },
+          { title: 'Оценка: ' + (rate && rate.score ? rate.score : 'нет'), scoreMenu: true },
+          { title: 'Эпизоды просмотрены: ' + (rate && rate.episodes || 0), episodesMenu: true }
+        ];
+        if (rate && rate.id) menu.push({ title: 'Удалить из списка Shikimori', removeRate: true });
+        Lampa.Select.show({
+          title: 'Мой список: ' + (anime.russian || anime.name || 'аниме'),
+          items: menu,
+          onBack: function () { Lampa.Controller.toggle('content'); },
+          onSelect: function (chosen) {
+            if (chosen.statusMenu) {
+              Lampa.Select.show({
+                title: 'Статус просмотра',
+                items: statuses,
+                onBack: function () { openRateEditor(anime); },
+                onSelect: function (selected) {
+                  saveOrUpdateRate(anime, rate, { status: selected.code });
+                }
+              });
+            } else if (chosen.scoreMenu) {
+              var scores = [{ title: 'Без оценки', code: 0 }];
+              for (var score = 1; score <= 10; score++) scores.push({ title: String(score), code: score });
+              Lampa.Select.show({
+                title: 'Оценка Shikimori',
+                items: scores,
+                onBack: function () { openRateEditor(anime); },
+                onSelect: function (selected) { saveOrUpdateRate(anime, rate, { score: selected.code }); }
+              });
+            } else if (chosen.episodesMenu) {
+              Lampa.Input.edit({
+                title: 'Количество просмотренных эпизодов',
+                value: String(rate && rate.episodes || 0),
+                free: true,
+                nosave: true
+              }, function (value) {
+                var episodes = parseInt(value, 10);
+                if (!isFinite(episodes) || episodes < 0) {
+                  Lampa.Noty.show('Введите число 0 или больше');
+                  return;
+                }
+                saveOrUpdateRate(anime, rate, { episodes: episodes });
+              });
+            } else if (chosen.removeRate) {
+              deleteUserRate(rate, function () {
+                anime.__user_rate = null;
+                Lampa.Noty.show('Аниме удалено из списка Shikimori');
+                if (accountList) reloadCurrent();
+              }, function (xhr, status, message) {
+                Lampa.Noty.show('Не удалось удалить запись: ' + (message || status || 'ошибка API'));
+              });
+            }
+          }
+        });
+      }, function (xhr, status, message) {
+        Lampa.Noty.show('Не удалось прочитать запись Shikimori: ' + (message || status || 'ошибка API'));
       });
     }
 
@@ -585,7 +1355,6 @@
         if (step > 0) Navigator.move('down');
         else Navigator.move('up');
       };
-
       scroll.onEnd = function () {
         if (!inited || loading || !hasMore) return;
         loadPage(currentPage + 1);
@@ -594,340 +1363,62 @@
       scroll.append(head);
       scroll.append(body);
       html.append(scroll.render(true));
+      loadGenres();
 
-      if (object && object.watchlist) {
-        hasMore = false;
-        var savedAnime = getWatchlist();
-        if (savedAnime.length) {
-          self.build(savedAnime);
-          this.activity.loader(false);
-          this.activity.toggle();
-        } else {
-          self.empty();
-        }
+      if (accountList && !accountIsConnected()) {
+        self.empty();
+        Lampa.Noty.show('Для просмотра списка подключите аккаунт Shikimori');
       } else {
-        var firstPage = Math.max(1, parseInt(object && object.page, 10) || 1);
+        var firstPage = Math.max(1, parseInt(object.page, 10) || 1);
         currentPage = firstPage - 1;
         loadPage(firstPage);
       }
-
       return this.render();
     };
 
     function loadPage(page) {
       if (!inited || loading || !hasMore) return;
-
       loading = true;
-      var params = $.extend({}, object || {}, { page: page });
+      var filterParams = buildFilterParams();
+      var params = $.extend({}, filterParams, object, { page: page });
 
-      API.main(params, function (result) {
+      function complete(result) {
         if (!inited) return;
-
         loading = false;
         currentPage = page;
         object.page = page;
         hasMore = result.length >= pageSize;
-
-        if (result.length === 0 && items.length === 0) {
+        if (!result.length && !items.length) {
           self.empty();
           return;
         }
-
         self.build(result);
         self.activity.loader(false);
         self.activity.toggle();
-      }, function (error) {
+      }
+
+      function failed(error) {
         if (!inited) return;
-
         loading = false;
-        var message = network.errorDecode
-          ? network.errorDecode(error, error && error.statusText)
-          : (error && error.message) || 'Ошибка сети';
+        var message = network.errorDecode ? network.errorDecode(error, error && error.statusText) :
+          (error && error.message) || 'Ошибка сети';
+        if (!items.length) self.empty();
+        Lampa.Noty.show('Не удалось загрузить ' + (page > 1 ? 'следующую страницу' : 'каталог') + ': ' + escapeHtml(message));
+      }
 
-        if (!items.length) {
-          self.empty();
-          Lampa.Noty.show('Не удалось загрузить каталог: ' + escapeHtml(message));
-        } else {
-          Lampa.Noty.show('Не удалось загрузить следующую страницу: ' + escapeHtml(message));
-        }
-      }, network);
+      if (accountList) loadAccountRates(page, object.accountStatus || '', complete, failed);
+      else API.main(params, complete, failed, network);
     }
 
     this.headeraction = function () {
       if (headerReady) return;
       headerReady = true;
 
-      var filters = {
-        kind: { title: 'Genre', items: [] },
-        AnimeKindEnum: {
-          title: 'Type',
-          items: [
-            { title: 'TV Series', code: 'tv' },
-            { title: 'Movie', code: 'movie' },
-            { title: 'OVA', code: 'ova' },
-            { title: 'ONA', code: 'ona' },
-            { title: 'Special', code: 'special' },
-            { title: 'TV Special', code: 'tv_special' },
-            { title: 'Music', code: 'music' },
-            { title: 'PV', code: 'pv' },
-            { title: 'CM', code: 'cm' }
-          ]
-        },
-        status: {
-          title: 'Status',
-          items: [
-            { title: 'Planned', code: 'anons' },
-            { title: 'Airing', code: 'ongoing' },
-            { title: 'Released', code: 'released' }
-          ]
-        },
-        score: {
-          title: 'Minimum score',
-          items: [
-            { title: 'Any score', code: '' },
-            { title: '6+', code: '6' },
-            { title: '7+', code: '7' },
-            { title: '8+', code: '8' },
-            { title: '9+', code: '9' }
-          ]
-        },
-        rating: {
-          title: 'Age rating',
-          items: [
-            { title: 'Any rating', code: '' },
-            { title: 'G — all ages', code: 'g' },
-            { title: 'PG — children', code: 'pg' },
-            { title: 'PG-13 — teens', code: 'pg_13' },
-            { title: 'R — 17+', code: 'r' },
-            { title: 'R+ — mild nudity', code: 'r_plus' }
-          ]
-        },
-        sort: {
-          title: 'Sort',
-          items: [
-            { title: 'By ID', code: 'id' },
-            { title: 'id_desc', code: 'id_desc' },
-            { title: 'By rank', code: 'ranked' },
-            { title: 'By type', code: 'kind' },
-            { title: 'By popularity', code: 'popularity' },
-            { title: 'In alphabetical order', code: 'name' },
-            { title: 'By release date', code: 'aired_on' },
-            { title: 'By number of episodes', code: 'episodes' },
-            { title: 'By status', code: 'status' },
-            { title: 'By random', code: 'random' },
-            { title: 'By random ranking', code: 'ranked_random' },
-            { title: 'By Shikimori ranking', code: 'ranked_shiki' },
-            { title: 'created_at', code: 'created_at' },
-            { title: 'created_at_desc', code: 'created_at_desc' }
-          ]
-        },
-        seasons: {
-          title: 'Season',
-          items: createSeasonItems()
-        }
-      };
-
-      function filterGenres() {
-        return (runtimeCache.genres || []).map(function (item) {
-          var copy = $.extend({}, item);
-          delete copy.selected;
-          delete copy.checked;
-          return copy;
-        });
-      }
-
-      function setGenres(response) {
-        var genres = Array.isArray(response) ? response : [];
-        runtimeCache.genres = genres.filter(function (item) {
-          return item && item.entry_type === 'Anime';
-        }).map(function (item) {
-          return $.extend({}, item, { title: item.name || item.russian || String(item.id || '') });
-        });
-        filters.kind.items = filterGenres();
-      }
-
-      if (runtimeCache.genres) {
-        filters.kind.items = filterGenres();
-      } else {
-        network.get(
-          'https://shikimori.one/api/genres',
-          function (response) {
-            if (inited) setGenres(response);
-          },
-          function (error) {
-            if (inited) console.warn('Shikimori: не удалось загрузить жанры', error);
-          }
-        );
-      }
-
-      function queryForShikimori() {
-        var query = { search: object && object.search || '' };
-
-        filters.AnimeKindEnum.items.forEach(function (item) {
-          if (item.selected) query.kind = item.code;
-        });
-        filters.status.items.forEach(function (item) {
-          if (item.selected) query.status = item.code;
-        });
-        filters.kind.items.forEach(function (item) {
-          if (item.selected) query.genre = item.id;
-        });
-        filters.sort.items.forEach(function (item) {
-          if (item.selected) query.sort = item.code;
-        });
-        filters.seasons.items.forEach(function (item) {
-          if (item.selected) query.seasons = item.code;
-        });
-        filters.score.items.forEach(function (item) {
-          if (item.selected && item.code) query.score = item.code;
-        });
-        filters.rating.items.forEach(function (item) {
-          if (item.selected && item.code) query.rating = item.code;
-        });
-
-        return query;
-      }
-
-      function selected(where) {
-        var titles = [];
-        (where.items || []).forEach(function (item) {
-          if (item.selected || item.checked) titles.push(item.title);
-        });
-        where.subtitle = titles.length
-          ? titles.join(', ')
-          : Lampa.Lang.translate('nochoice');
-      }
-
-      function select(where, chosen) {
-        (where || []).forEach(function (item) {
-          item.selected = false;
-        });
-        if (chosen) chosen.selected = true;
-      }
-
-      function submenu(item, mainMenu) {
-        Lampa.Select.show({
-          title: item.title,
-          items: item.items || [],
-          onBack: mainMenu,
-          onSelect: function (chosen) {
-            select(item.items, chosen);
-            mainMenu();
-          }
-        });
-      }
-
-      function search() {
-        var query = queryForShikimori();
-        var params = {
-          url: '',
-          title: 'Shikimori',
-          component: 'LMEShikimori',
-          page: 1
-        };
-
-        if (query.kind) params.kind = query.kind;
-        if (query.status) params.status = query.status;
-        if (query.genre) params.genre = query.genre;
-        if (query.sort) params.sort = query.sort;
-        if (query.seasons) params.seasons = query.seasons;
-        if (query.score) params.score = query.score;
-        if (query.rating) params.rating = query.rating;
-        if (query.search) params.search = query.search;
-
-        Lampa.Activity.push(params);
-      }
-
-      function promptTitleSearch() {
-        if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
-          Lampa.Noty.show('В этой версии Lampa поиск с клавиатурой недоступен');
-          return;
-        }
-        Lampa.Input.edit({
-          title: 'Search anime by title',
-          value: object && object.search || '',
-          free: true,
-          nosave: true
-        }, function (value) {
-          Lampa.Controller.toggle('content');
-          var title = String(value || '').trim();
-          if (!title) return;
-          Lampa.Activity.push({
-            url: '',
-            title: 'Search: ' + title,
-            component: 'LMEShikimori',
-            page: 1,
-            search: title
-          });
-        });
-      }
-
-      function mainMenu() {
-        Object.keys(filters).forEach(function (key) {
-          selected(filters[key]);
-        });
-
-        Lampa.Select.show({
-          title: 'Filters',
-          items: [
-            { title: 'Search by title', searchAnimes: true, subtitle: object && object.search || '' },
-            { title: 'My list (' + getWatchlist().length + ')', openWatchlist: true },
-            { title: Lampa.Lang.translate('search_start'), searchShikimori: true },
-            filters.status,
-            filters.AnimeKindEnum,
-            filters.kind,
-            filters.score,
-            filters.rating,
-            filters.sort,
-            filters.seasons
-          ],
-          onBack: function () {
-            Lampa.Controller.toggle('content');
-          },
-          onSelect: function (chosen) {
-            if (chosen && chosen.searchAnimes) promptTitleSearch();
-            else if (chosen && chosen.openWatchlist) {
-              Lampa.Activity.push({
-                url: '',
-                title: 'My Shikimori list',
-                component: 'LMEShikimori',
-                page: 1,
-                watchlist: true
-              });
-            } else if (chosen && chosen.searchShikimori) search();
-            else if (chosen) submenu(chosen, mainMenu);
-          }
-        });
-      }
-
-      head.find('.LMEShikimori__search')
-        .off('hover:enter')
-        .on('hover:enter', mainMenu);
-
-      head.find('.LMEShikimori__home')
-        .off('hover:enter')
-        .on('hover:enter', function () {
-          Lampa.Activity.push({
-            url: '',
-            title: 'Shikimori',
-            component: 'LMEShikimori',
-            page: 1
-          });
-        });
-
-      watchlistButton = head.find('.LMEShikimori__watchlist');
-      updateWatchlistButton();
-      watchlistButton
-        .off('hover:enter')
-        .on('hover:enter', function () {
-          Lampa.Activity.push({
-            url: '',
-            title: 'My Shikimori list',
-            component: 'LMEShikimori',
-            page: 1,
-            watchlist: true
-          });
-        });
+      head.find('.LMEShikimori__search').off('hover:enter').on('hover:enter', mainFilterMenu);
+      head.find('.LMEShikimori__account').off('hover:enter').on('hover:enter', accountMenu);
+      head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
+        Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
+      });
     };
 
     this.empty = function () {
@@ -942,45 +1433,27 @@
       var _this = this;
       (Array.isArray(data) ? data : []).forEach(function (anime) {
         if (!anime || anime.id == null) return;
-
         var id = String(anime.id);
         if (seenIds[id]) return;
         seenIds[id] = true;
 
-        var item = new Card(anime, userLang);
-        var card = item.render(true);
-
-        card.on('hover:focus', function () {
-          last = item.render()[0];
-          active = items.indexOf(item);
-          if (active !== -1 && items[active]) {
-            scroll.update(items[active].render(true), true);
-          }
-        }).on('hover:enter', function () {
-          if (!inited) return;
-          lookupNetwork.clear();
-          API.search(anime, lookupNetwork);
-        }).on('hover:long', function () {
-          if (!inited) return;
-          var added = toggleWatchlist(anime);
-          updateWatchlistButton();
-          card.find('.LMEShikimori__saved').text(added ? '★' : '');
-          Lampa.Noty.show(added
-            ? 'Добавлено в мой список: ' + (anime.russian || anime.name || 'аниме')
-            : 'Удалено из моего списка: ' + (anime.russian || anime.name || 'аниме'));
-          if (object && object.watchlist && !added) {
-            var savedIndex = items.indexOf(item);
-            if (savedIndex !== -1) items.splice(savedIndex, 1);
-            delete seenIds[id];
-            item.destroy();
-            if (!items.length) self.empty();
+        var card = new Card(anime, userLang, {
+          focus: function (instance) {
+            last = instance && instance.render ? instance.render() : card.render();
+            var index = items.indexOf(card);
+            if (index !== -1 && items[index]) scroll.update(items[index].render(), true);
+          },
+          enter: function () {
+            lookupNetwork.clear();
+            API.search(anime, lookupNetwork);
+          },
+          long: function () {
+            openRateEditor(anime);
           }
         });
-
-        body.append(card);
-        items.push(item);
+        body.append(card.render());
+        items.push(card);
       });
-
       scroll.minus();
     };
 
@@ -992,7 +1465,6 @@
     this.start = function () {
       var activeActivity = Lampa.Activity.active();
       if (activeActivity && activeActivity.activity && activeActivity.activity !== this.activity) return;
-
       Lampa.Controller.add('content', {
         toggle: function () {
           Lampa.Controller.collectionSet(scroll.render());
@@ -1002,9 +1474,7 @@
           if (Navigator.canmove('left')) Navigator.move('left');
           else Lampa.Controller.toggle('menu');
         },
-        right: function () {
-          Navigator.move('right');
-        },
+        right: function () { Navigator.move('right'); },
         up: function () {
           if (Navigator.canmove('up')) Navigator.move('up');
           else Lampa.Controller.toggle('head');
@@ -1019,7 +1489,6 @@
 
     this.pause = function () {};
     this.stop = function () {};
-
     this.render = function (js) {
       return js ? html : $(html);
     };
@@ -1030,7 +1499,7 @@
       network.clear();
       lookupNetwork.clear();
       head.off();
-      Lampa.Arrays.destroy(items);
+      items.forEach(function (item) { item.destroy(); });
       scroll.destroy();
       html.remove();
       items = [];
@@ -1154,13 +1623,13 @@
       type: "other",
       version: "0.2",
       name: "LME Shikimori",
-      description: "Shikimori catalogue, title search and local watchlist",
+      description: "Shikimori catalogue, native Lampa cards, filters and OAuth account sync",
       component: "LMEShikimori"
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>\n            .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori.card__type{background:#ff4242;color:#fff}.LMEShikimori .card__season{position:absolute;left:-0.8em;top:3.4em;padding:.4em .4em;background:#05f;color:#fff;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori .card__status{position:absolute;left:-0.8em;bottom:1em;padding:.4em .4em;background:#ffe216;color:#000;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori__saved{position:absolute;right:.2em;top:.2em;z-index:2;padding:.2em .35em;background:#ffb900;color:#000;border-radius:.3em;font-size:1.1em}.LMEShikimori.card__season.no-season{display:none}\n        </style>");
-    Lampa.Template.add("LMEShikimori-Card", "<div class=\"LMEShikimori card selector layer--visible layer--render\">\n                <div class=\"LMEShikimori card__view\">\n                    <img src=\"{img}\" class=\"LMEShikimori card__img\" />\n                    <div class=\"LMEShikimori card__type\">{type}</div>\n                    <div class=\"LMEShikimori card__vote\">{rate}</div>\n                    <div class=\"LMEShikimori__saved\">{saved}</div>\n                    <div class=\"LMEShikimori card__season\">{season}</div>\n                    <div class=\"LMEShikimori card__status\">{status}</div>\n                </div>\n                <div class=\"LMEShikimori card__title\">{title}</div>\n            </div>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3}.LMEShikimori__user-status{position:absolute;left:.5em;bottom:.5em;z-index:3;padding:.3em .45em;border-radius:.25em;background:rgba(0,0,0,.78);color:#fff;font-size:.85em}.LMEShikimori.card__type{background:#ff4242;color:#fff}</style>");
+    Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div><div class=\"LMEShikimori__user-status\">{status}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
     Component();
