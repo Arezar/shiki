@@ -767,23 +767,27 @@
     }
 
     function openFilterGroup(title, keys, onReturn) {
-      var groupItems = keys.map(function (key) {
-        selectedTitle(filters[key]);
-        return filters[key];
-      });
-      Lampa.Select.show({
-        title: title,
-        items: groupItems,
-        onBack: onReturn,
-        onSelect: function (chosen) {
-          keys.some(function (key) {
-            if (chosen !== filters[key]) return false;
-            if (key === 'genres') openGenreFilter(onReturn);
-            else openSingleFilter(key, onReturn);
-            return true;
-          });
-        }
-      });
+      function showGroup() {
+        var groupItems = keys.map(function (key) {
+          selectedTitle(filters[key]);
+          return filters[key];
+        });
+        Lampa.Select.show({
+          title: title,
+          items: groupItems,
+          onBack: onReturn,
+          onSelect: function (chosen) {
+            keys.some(function (key) {
+              if (chosen !== filters[key]) return false;
+              if (key === 'genres') openGenreFilter(showGroup);
+              else openSingleFilter(key, showGroup);
+              return true;
+            });
+          }
+        });
+      }
+
+      showGroup();
     }
 
     function openTitleSearch() {
