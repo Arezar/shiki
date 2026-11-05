@@ -11,7 +11,9 @@ const exportForTests = [
   '    NetworkManager: NetworkManager,',
   '    main: main,',
   '    Card: Card,',
-  '    Component: Component$1',
+  '    Component: Component$1,',
+  '    getWatchlist: getWatchlist,',
+  '    toggleWatchlist: toggleWatchlist',
   '  };',
   '  if (!window.plugin_shikimori_ready) startPlugin();'
 ].join('\n');
@@ -21,6 +23,7 @@ assert.ok(source.includes(startMarker), 'plugin startup marker must exist');
 source = source.replace(startMarker, exportForTests);
 
 const ajaxCalls = [];
+const storageData = {};
 const jqueryInstances = [];
 const scrollInstances = [];
 let emptyCreated = 0;
@@ -62,7 +65,8 @@ FakeJQuery.prototype.empty = function () {
   this.nodes = [];
   return this;
 };
-FakeJQuery.prototype.text = function () {
+FakeJQuery.prototype.text = function (value) {
+  if (arguments.length) this.textValue = value;
   return this;
 };
 FakeJQuery.prototype.prepend = function (value) {
@@ -112,6 +116,12 @@ const Lampa = {
   Storage: {
     field(key) {
       return key === 'language' ? 'ru' : false;
+    },
+    get(key, fallback) {
+      return Object.prototype.hasOwnProperty.call(storageData, key) ? storageData[key] : fallback;
+    },
+    set(key, value) {
+      storageData[key] = value;
     }
   },
   Template: {
@@ -209,7 +219,10 @@ function testGraphQLJsonAndVariables() {
     kind: 'tv',
     status: 'ongoing',
     genre: 5,
-    seasons: 'winter_2026'
+    seasons: 'winter_2026',
+    search: 'Sailor Moon',
+    score: '8',
+    rating: 'pg_13'
   }, data => {
     completed = data;
   }, error => {
@@ -228,7 +241,12 @@ function testGraphQLJsonAndVariables() {
   assert.equal(payload.variables.status, 'ongoing');
   assert.equal(payload.variables.genre, '5');
   assert.equal(payload.variables.season, 'winter_2026');
+  assert.equal(payload.variables.search, 'Sailor Moon');
+  assert.equal(payload.variables.score, 8);
+  assert.equal(payload.variables.rating, 'pg_13');
   assert.match(payload.query, /malId/);
+  assert.match(payload.query, /search: \\$search/);
+  assert.match(payload.query, /rating: \\$rating/);
 
   request.xhr.resolve({ data: { animes: [{ id: 1, malId: 1234 }] } });
   assert.equal(completed.length, 1);
@@ -241,6 +259,67 @@ function testGraphQLJsonAndVariables() {
 
   ajaxCalls[2].xhr.resolve({ errors: [{ message: 'Invalid sort' }] });
   assert.equal(graphQLError.message, 'Invalid sort');
+}
+
+function testLocalWatchlistPersistence() {
+  storageData.lme_shikimori_watchlist = [
+    { id: 77, name: 'Already saved' },
+    { id: 77, name: 'Duplicate' },
+    null
+  ];
+  assert.equal(api.getWatchlist().length, 1, 'saved list should discard invalid and duplicate entries');
+
+  const anime = {
+    id: 88,
+    malId: 188,
+    name: 'Sample Anime',
+    russian: 'Пример',
+    score: 8.4,
+    poster: { originalUrl: 'https://shikimori.one/poster.jpg' },
+    privateField: 'must not be stored'
+  };
+  assert.equal(api.toggleWatchlist(anime), true, 'first toggle should save the anime');
+  const saved = api.getWatchlist();
+  assert.equal(saved.length, 2);
+  assert.equal(saved[1].id, 88);
+  assert.equal(saved[1].malId, 188);
+  assert.equal(saved[1].poster.originalUrl, 'https://shikimori.one/poster.jpg');
+  assert.equal(Object.prototype.hasOwnProperty.call(saved[1], 'privateField'), false);
+  assert.equal(api.toggleWatchlist(anime), false, 'second toggle should remove the anime');
+  assert.equal(api.getWatchlist().length, 1);
+}
+
+function testWatchlistScreenAndLongPressRemoval() {
+  storageData.lme_shikimori_watchlist = [{
+    id: 501,
+    name: 'Saved Anime',
+    russian: 'Сохранённое аниме',
+    malId: 9501,
+    kind: 'tv',
+    score: 8.1,
+    poster: { originalUrl: 'https://shikimori.one/saved.jpg' }
+  }];
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1, watchlist: true });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const graphqlRequests = ajaxCalls.filter(item =>
+    item.options.url === 'https://shikimori.one/api/graphql'
+  );
+  assert.equal(graphqlRequests.length, 0, 'opening local watchlist must not request the remote catalogue');
+
+  const body = jqueryInstances.find(item =>
+    String(item.selector).indexOf('LMEShikimori-catalog--list') !== -1
+  );
+  assert.ok(body && body.nodes.length === 1, 'saved entry should render as a card');
+  const savedCard = body.nodes[0];
+  assert.equal(typeof savedCard.handlers['hover:long'], 'function', 'card should expose long-press save action');
+  savedCard.handlers['hover:long']();
+
+  assert.equal(api.getWatchlist().length, 0, 'long press in watchlist should remove the entry');
+  assert.equal(savedCard.removed, true, 'removed card should leave the screen');
+  component.destroy();
 }
 
 function testCardEscapingAndNullSafety() {
@@ -335,8 +414,10 @@ function testEmptyRestoredPage() {
 
 testRequestCancellation();
 testGraphQLJsonAndVariables();
+testLocalWatchlistPersistence();
+testWatchlistScreenAndLongPressRemoval();
 testCardEscapingAndNullSafety();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 
-process.stdout.write('Shikimori smoke tests: PASS (5 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (7 groups)\n');
