@@ -345,7 +345,7 @@
       }
 
       var url = tmdbUrl('search/multi') +
-        '&query=' + encodeURIComponent(cleaned);
+        '&include_adult=true&query=' + encodeURIComponent(cleaned);
 
       requestGet(network, url, function (response) {
         var results = response && Array.isArray(response.results) ? response.results : [];
