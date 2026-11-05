@@ -1896,7 +1896,12 @@
                 }
             })
             var count = parseInt(card.number_of_seasons, 10) || 0
-            if (count > 1 && (!latest || count > latest.number)) latest = { number: count, year: latest ? latest.year : 0 }
+            if (count > 1 && (!latest || count > latest.number)) {
+                var lastYear = card.last_air_date ? parseInt(String(card.last_air_date).substr(0, 4), 10) || 0 : 0
+                latest = { number: count, year: lastYear }
+            } else if (latest && !latest.year && card.last_air_date) {
+                latest.year = parseInt(String(card.last_air_date).substr(0, 4), 10) || 0
+            }
             return latest && latest.number > 1 ? latest : null
         }
 
