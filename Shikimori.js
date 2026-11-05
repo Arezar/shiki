@@ -115,7 +115,8 @@
         shikimori_filters:      { ru: 'Фильтры', en: 'Filters', uk: 'Фільтри' },
         shikimori_filter_kind:  { ru: 'Тип', en: 'Type', uk: 'Тип' },
         shikimori_filter_status:{ ru: 'Статус', en: 'Status', uk: 'Статус' },
-        shikimori_filter_year:  { ru: 'Год', en: 'Year', uk: 'Рік' },
+        shikimori_filter_year:  { ru: 'Год / сезон', en: 'Year / season', uk: 'Рік / сезон' },
+        shikimori_filter_genre: { ru: 'Жанр', en: 'Genre', uk: 'Жанр' },
         shikimori_filter_score: { ru: 'Минимальная оценка', en: 'Minimum score', uk: 'Мінімальна оцінка' },
         shikimori_filter_duration:{ ru: 'Длительность', en: 'Duration', uk: 'Тривалість' },
         shikimori_filter_rating:{ ru: 'Возрастной рейтинг', en: 'Age rating', uk: 'Віковий рейтинг' },
@@ -200,6 +201,26 @@
             paused: tr('shikimori_paused')
         }
         return map[s] || s || ''
+    }
+
+    function genreTitle(id) {
+        var ru = ['','Экшен','Приключения','Машины','Комедия','Безумие','Демоны','Детектив','Драма','Этти','Фэнтези','Игры','','Исторический','Ужасы','Детское','Магия','Боевые искусства','Меха','Музыка','Пародия','Самураи','Романтика','Школа','Фантастика','Сёдзё','Сёдзё-ай','Сёнэн','Сёнэн-ай','Космос','Спорт','Сверхспособности','Вампиры','Гарем','Повседневность','Сверхъестественное','Военное','Полиция','Психологическое','Триллер','Сэйнэн','Дзёсэй']
+        var en = ['','Action','Adventure','Cars','Comedy','Dementia','Demons','Mystery','Drama','Ecchi','Fantasy','Game','','Historical','Horror','Kids','Magic','Martial Arts','Mecha','Music','Parody','Samurai','Romance','School','Sci-Fi','Shoujo','Shoujo Ai','Shounen','Shounen Ai','Space','Sports','Super Power','Vampire','Harem','Slice of Life','Supernatural','Military','Police','Psychological','Thriller','Seinen','Josei']
+        var n = parseInt(id, 10)
+        return (isRu() ? ru[n] : en[n]) || String(id)
+    }
+
+    function orderTitle(value) {
+        var map = {
+            popularity: isRu() ? 'Популярность' : 'Popularity',
+            ranked: isRu() ? 'Рейтинг' : 'Ranked',
+            ranked_shiki: isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking',
+            aired_on: isRu() ? 'Дата выхода' : 'Release date',
+            name: isRu() ? 'Название' : 'Name A–Z',
+            episodes: isRu() ? 'Количество серий' : 'Episode count',
+            status: isRu() ? 'Статус выхода' : 'Release status'
+        }
+        return map[value] || value
     }
 
     function formatScore(score) {
@@ -638,6 +659,7 @@
             if (filters.score) query += '&score=' + encodeURIComponent(filters.score)
             if (filters.duration) query += '&duration=' + encodeURIComponent(filters.duration)
             if (filters.rating) query += '&rating=' + encodeURIComponent(filters.rating)
+            if (filters.genre) query += '&genre=' + encodeURIComponent(filters.genre)
             if (filters.order) order = filters.order
         }
         query += '&order=' + encodeURIComponent(order)
@@ -1152,17 +1174,18 @@
         }
 
         function hasActiveFilters() {
-            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.order)
+            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.genre || filters.order)
         }
         function filterSummary() {
             var parts = []
-            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + filters.kind.toUpperCase())
+            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + kindTitle(filters.kind))
             if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
             if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + filters.season)
             if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
             if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + filters.duration)
             if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
-            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + filters.order)
+            if (filters.genre) parts.push(tr('shikimori_filter_genre') + ': ' + genreTitle(filters.genre))
+            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + orderTitle(filters.order))
             return parts.join('  ·  ')
         }
         function replaceFilters(next) {
@@ -1171,14 +1194,38 @@
         }
         function showFilterMenu() {
             if (!Lampa.Select || typeof Lampa.Select.show !== 'function') { Lampa.Noty.show(tr('shikimori_filters')); return }
+            var adultEnabled = false
+            try { adultEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
+            var seasonValues = [['', tr('shikimori_filter_any')]]
+            var seasonNames = isRu()
+                ? [['winter', 'Зима'], ['spring', 'Весна'], ['summer', 'Лето'], ['fall', 'Осень']]
+                : [['winter', 'Winter'], ['spring', 'Spring'], ['summer', 'Summer'], ['fall', 'Fall']]
+            var currentYear = new Date().getFullYear()
+            for (var sy = currentYear; sy >= currentYear - 2; sy--) {
+                for (var ss = 0; ss < seasonNames.length; ss++) {
+                    seasonValues.push([seasonNames[ss][0] + '_' + sy, seasonNames[ss][1] + ' ' + sy])
+                }
+            }
+            for (var y = currentYear; y >= 1980; y--) seasonValues.push([String(y), String(y)])
+
+            var kindValues = [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['tv_13', 'TV · 13'], ['tv_24', 'TV · 24'], ['tv_48', 'TV · 48'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special'], ['tv_special', 'TV Special'], ['music', 'Music'], ['pv', 'PV'], ['cm', 'CM']]
+            var genreValues = [['', tr('shikimori_filter_any')]]
+            for (var gid = 1; gid <= 41; gid++) {
+                if (gid === 12 && !adultEnabled) continue
+                genreValues.push([String(gid), genreTitle(gid)])
+            }
+            var ratingValues = [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+']]
+            if (adultEnabled) ratingValues.push(['rx', 'Rx'])
+
             var entries = [
-                { key: 'kind', title: tr('shikimori_filter_kind'), values: [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special']] },
+                { key: 'kind', title: tr('shikimori_filter_kind'), values: kindValues },
                 { key: 'status', title: tr('shikimori_filter_status'), values: [['', tr('shikimori_filter_any')], ['anons', tr('shikimori_anons')], ['ongoing', tr('shikimori_ongoing')], ['released', tr('shikimori_released_s')]] },
-                { key: 'season', title: tr('shikimori_filter_year'), values: (function () { var years = [['', tr('shikimori_filter_any')]]; for (var y = new Date().getFullYear(); y >= 1980; y--) years.push([String(y), String(y)]); return years })() },
+                { key: 'season', title: tr('shikimori_filter_year'), values: seasonValues },
+                { key: 'genre', title: tr('shikimori_filter_genre'), values: genreValues },
                 { key: 'score', title: tr('shikimori_filter_score'), values: [['', tr('shikimori_filter_any')], ['5', '5+'], ['6', '6+'], ['7', '7+'], ['8', '8+'], ['9', '9+']] },
                 { key: 'duration', title: tr('shikimori_filter_duration'), values: [['', tr('shikimori_filter_any')], ['S', '< 10 ' + tr('shikimori_minutes')], ['D', '< 30 ' + tr('shikimori_minutes')], ['F', '30+ ' + tr('shikimori_minutes')]] },
-                { key: 'rating', title: tr('shikimori_filter_rating'), values: [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+'], ['rx', 'Rx']] },
-                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['aired_on', tr('shikimori_filter_year')], ['name', 'A–Z']] }
+                { key: 'rating', title: tr('shikimori_filter_rating'), values: ratingValues },
+                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['ranked_shiki', isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking'], ['aired_on', isRu() ? 'Дата выхода' : 'Release date'], ['episodes', isRu() ? 'Количество серий' : 'Episode count'], ['name', 'A–Z'], ['status', isRu() ? 'Статус выхода' : 'Release status']] }
             ]
             var items = entries.map(function (entry) { return { title: entry.title + (filters[entry.key] ? ' · ' + filters[entry.key] : ''), subtitle: filters[entry.key] ? tr('shikimori_filter_active') : '', filterKey: entry.key } })
             items.push({ title: tr('shikimori_filter_clear'), filterKey: '__clear' })
