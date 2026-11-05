@@ -1184,7 +1184,7 @@
         }).map(function (item) {
           return $.extend({}, item, { title: escapeHtml(item.russian || item.name || String(item.id)) });
         });
-        filters.kind.items = runtimeCache.genres.map(function (item) {
+        filters.genres.items = runtimeCache.genres.map(function (item) {
           return $.extend({}, item, { code: String(item.id), checkbox: true });
         });
         if (!inited) return;
@@ -1245,17 +1245,17 @@
     }
 
     function openGenreFilter(onReturn) {
-      selectedTitle(filters.kind);
+      selectedTitle(filters.genres);
       Lampa.Select.show({
-        title: filters.kind.title,
-        items: filters.kind.items,
+        title: filters.genres.title,
+        items: filters.genres.items,
         nohide: true,
         onBack: onReturn,
         onCheck: function (chosen) {
           chosen.selected = !!chosen.checked;
-          filterState.genre = filters.kind.items.filter(function (item) { return item.selected; })
+          filterState.genre = filters.genres.items.filter(function (item) { return item.selected; })
             .map(function (item) { return String(item.id); }).join(',');
-          selectedTitle(filters.kind);
+          selectedTitle(filters.genres);
         }
       });
     }
@@ -1310,7 +1310,7 @@
         items: [
           { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
           { title: 'Поиск по названию', subtitle: escapeHtml(filterState.search || 'Не задан'), searchAnimes: true },
-          filters.kind,
+          filters.genres,
           filters.type,
           filters.status,
           filters.score,
@@ -1325,7 +1325,7 @@
           if (chosen && chosen.applyFilters) applyFilters();
           else if (chosen && chosen.searchAnimes) openTitleSearch();
           else if (chosen && chosen.resetFilters) resetFilters();
-          else if (chosen === filters.kind) openGenreFilter(mainFilterMenu);
+          else if (chosen === filters.genres) openGenreFilter(mainFilterMenu);
           else if (chosen === filters.type) openSingleFilter('type', mainFilterMenu);
           else if (chosen === filters.status) openSingleFilter('status', mainFilterMenu);
           else if (chosen === filters.score) openSingleFilter('score', mainFilterMenu);
