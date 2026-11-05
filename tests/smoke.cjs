@@ -159,7 +159,8 @@ function testGraphQLVariablesAndFilterCoverage() {
     seasons: 'winter_2026',
     search: 'Fullmetal',
     score: '8',
-    rating: 'pg_13'
+    rating: 'pg_13',
+    duration: 'D'
   }, data => { completed = data; }, error => { failed = error; }, manager);
 
   const request = ajaxCalls.find(item => item.options.url === 'https://shikimori.one/api/graphql');
@@ -176,6 +177,8 @@ function testGraphQLVariablesAndFilterCoverage() {
   assert.equal(payload.variables.search, 'Fullmetal');
   assert.equal(payload.variables.score, 8);
   assert.equal(payload.variables.rating, 'pg_13');
+  assert.equal(payload.variables.duration, 'D');
+  assert.match(payload.query, /duration: \$duration/);
   assert.match(payload.query, /episodesAired/);
   assert.match(payload.query, /duration/);
 
@@ -229,6 +232,9 @@ function testLegacyCardFallbackSafety() {
   assert.equal(lastTemplate.data.img, '');
   assert.equal(lastTemplate.data.type, 'ANIME');
   assert.equal(storage.lme_shikimori_watchlist, undefined, 'plugin must not create a duplicate local watchlist');
+  assert.doesNotMatch(source, /getWatchlist|toggleWatchlist|WATCHLIST_KEY/);
+  assert.match(source, /Lampa\.Maker\.make\('Card'/, 'Lampa 3.x should use native cards');
+  assert.match(source, /onCheck: function \(chosen\)/, 'genre filters should use checkbox callbacks');
 }
 
 testRequestCancellation();
