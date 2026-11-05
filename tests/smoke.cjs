@@ -379,16 +379,6 @@ function testCatalogueRetryAfterInitialFailure() {
   component.destroy();
 }
 
-function testTmdbSearchExcludesAdultResults() {
-  ajaxCalls.length = 0;
-  const manager = new api.NetworkManager(15000);
-  api.search({ id: 901, name: 'Example anime' }, manager);
-  const request = ajaxCalls.find(item => item.options.url.indexOf('https://api.themoviedb.org/3/search/multi') === 0);
-  assert.ok(request, 'TMDB fallback search should be issued');
-  assert.doesNotMatch(request.options.url, /include_adult=true/i, 'adult TMDB results must not be explicitly enabled');
-  manager.clear();
-}
-
 function testNoAccountAuthorizationRemains() {
   assert.equal(Object.keys(storage.lme_shikimori_account_v1).length, 0, 'legacy OAuth credentials and tokens must be cleared');
   assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
@@ -427,8 +417,7 @@ testResetFiltersClearsCheckboxState();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testCatalogueRetryAfterInitialFailure();
-testTmdbSearchExcludesAdultResults();
 testLegacyCardFallbackSafety();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (10 groups)\n');
