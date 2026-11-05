@@ -43,16 +43,31 @@ function FakeJQuery(selector) {
   jqueryInstances.push(this);
 }
 FakeJQuery.prototype.eq = function () { return this; };
-FakeJQuery.prototype.append = function (value) { this.nodes.push(value); return this; };
+FakeJQuery.prototype.append = function (value) {
+  if (value instanceof FakeJQuery) value.parent = this;
+  this.nodes.push(value);
+  return this;
+};
 FakeJQuery.prototype.on = function (event, callback) { this.handlers[event] = callback; return this; };
 FakeJQuery.prototype.off = function () { this.handlers = {}; return this; };
 FakeJQuery.prototype.find = function (selector) { return new FakeJQuery(selector); };
 FakeJQuery.prototype.addClass = function () { return this; };
 FakeJQuery.prototype.removeClass = function () { return this; };
-FakeJQuery.prototype.remove = function () { this.removed = true; return this; };
+FakeJQuery.prototype.remove = function () {
+  this.removed = true;
+  if (this.parent && this.parent.nodes) {
+    const index = this.parent.nodes.indexOf(this);
+    if (index !== -1) this.parent.nodes.splice(index, 1);
+  }
+  return this;
+};
 FakeJQuery.prototype.empty = function () { this.nodes = []; return this; };
 FakeJQuery.prototype.text = function (value) { if (arguments.length) this.textContent = String(value); return this; };
-FakeJQuery.prototype.prepend = function (value) { this.nodes.unshift(value); return this; };
+FakeJQuery.prototype.prepend = function (value) {
+  if (value instanceof FakeJQuery) value.parent = this;
+  this.nodes.unshift(value);
+  return this;
+};
 
 function $(selector) {
   return new FakeJQuery(selector);
