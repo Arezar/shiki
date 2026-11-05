@@ -529,6 +529,7 @@
     var filterState = $.extend({}, filterDefaults, object);
     var retryButton = null;
     var retryStatus = null;
+    var loadingStatus = null;
 
     function getSeason(date) {
       var month = date.getMonth();
@@ -765,6 +766,26 @@
       });
     }
 
+    function openFilterGroup(title, keys, onReturn) {
+      var groupItems = keys.map(function (key) {
+        selectedTitle(filters[key]);
+        return filters[key];
+      });
+      Lampa.Select.show({
+        title: title,
+        items: groupItems,
+        onBack: onReturn,
+        onSelect: function (chosen) {
+          keys.some(function (key) {
+            if (chosen !== filters[key]) return false;
+            if (key === 'genres') openGenreFilter(onReturn);
+            else openSingleFilter(key, onReturn);
+            return true;
+          });
+        }
+      });
+    }
+
     function openTitleSearch() {
       if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
         Lampa.Noty.show('В этой версии Lampa недоступен поиск с клавиатуры');
@@ -807,22 +828,14 @@
     }
 
     function mainFilterMenu() {
-      ['genres', 'type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
-        selectedTitle(filters[key]);
-      });
       Lampa.Select.show({
         title: 'Фильтры Shikimori',
         items: [
           { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
           { title: 'Поиск по названию', subtitle: escapeHtml(filterState.search || 'Не задан'), searchAnimes: true },
-          filters.genres,
-          filters.type,
-          filters.status,
-          filters.score,
-          filters.rating,
-          filters.duration,
-          filters.seasons,
-          filters.sort,
+          { title: 'Основные параметры', subtitle: 'Жанры, тип и статус', group: 'basic' },
+          { title: 'Оценки и формат', subtitle: 'Оценка, возрастной рейтинг и длительность', group: 'quality' },
+          { title: 'Сезон и сортировка', subtitle: 'Период выхода и порядок каталога', group: 'period' },
           { title: 'Сбросить все фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
@@ -830,16 +843,29 @@
           if (chosen && chosen.applyFilters) applyFilters();
           else if (chosen && chosen.searchAnimes) openTitleSearch();
           else if (chosen && chosen.resetFilters) resetFilters();
-          else if (chosen === filters.genres) openGenreFilter(mainFilterMenu);
-          else if (chosen === filters.type) openSingleFilter('type', mainFilterMenu);
-          else if (chosen === filters.status) openSingleFilter('status', mainFilterMenu);
-          else if (chosen === filters.score) openSingleFilter('score', mainFilterMenu);
-          else if (chosen === filters.rating) openSingleFilter('rating', mainFilterMenu);
-          else if (chosen === filters.duration) openSingleFilter('duration', mainFilterMenu);
-          else if (chosen === filters.seasons) openSingleFilter('seasons', mainFilterMenu);
-          else if (chosen === filters.sort) openSingleFilter('sort', mainFilterMenu);
+          else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
+          else if (chosen && chosen.group === 'quality') openFilterGroup('Оценки и формат', ['score', 'rating', 'duration'], mainFilterMenu);
+          else if (chosen && chosen.group === 'period') openFilterGroup('Сезон и сортировка', ['seasons', 'sort'], mainFilterMenu);
         }
       });
+    }
+
+    function clearLoadingStatus() {
+      if (loadingStatus && typeof loadingStatus.remove === 'function') loadingStatus.remove();
+      loadingStatus = null;
+    }
+
+    function showLoadingStatus(page, retry) {
+      clearLoadingStatus();
+      loadingStatus = $('<div class="LMEShikimori__loading-info"></div>');
+      if (loadingStatus && typeof loadingStatus.text === 'function') {
+        var message = retry
+          ? 'Повторная загрузка каталога…'
+          : (page > 1 ? 'Загружается следующая страница…' : 'Загружается каталог Shikimori…');
+        loadingStatus.text(message);
+      }
+      body.append(loadingStatus);
+      scroll.minus();
     }
 
     function clearRetry() {
@@ -860,7 +886,7 @@
         if (!inited || loading) return;
         clearRetry();
         self.activity.loader(true);
-        loadPage(page);
+        loadPage(page, true);
       });
       body.prepend(retryButton);
       body.prepend(retryStatus);
@@ -871,6 +897,7 @@
     function reloadCurrent() {
       if (!inited) return;
       clearRetry();
+      clearLoadingStatus();
       network.clear();
       lookupNetwork.clear();
       items.forEach(function (item) { item.destroy(); });
@@ -915,12 +942,14 @@
     function loadPage(page) {
       if (!inited || loading || !hasMore) return;
       loading = true;
+      showLoadingStatus(page, !!arguments[1]);
       var filterParams = buildFilterParams();
       var params = $.extend({}, filterParams, object, { page: page });
 
       function complete(result) {
         if (!inited) return;
         clearRetry();
+        clearLoadingStatus();
         loading = false;
         currentPage = page;
         object.page = page;
@@ -936,6 +965,7 @@
 
       function failed(error) {
         if (!inited) return;
+        clearLoadingStatus();
         loading = false;
         var message = network.errorDecode ? network.errorDecode(error, error && error.statusText) :
           (error && error.message) || 'Ошибка сети';
@@ -1030,6 +1060,7 @@
       inited = false;
       loading = false;
       clearRetry();
+      clearLoadingStatus();
       network.clear();
       lookupNetwork.clear();
       head.off();
@@ -1165,7 +1196,7 @@
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}</style>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__loading-info,.LMEShikimori__retry-info{display:block;min-height:3em;padding:1.2em 1.5em;opacity:.85}.LMEShikimori__retry{margin:0 1.5em 1.5em}</style>");
     Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
