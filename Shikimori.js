@@ -343,12 +343,13 @@
   function clearOAuthCallbackFromAddressBar() {
     var location = window.location;
     if (!location || !window.history || typeof window.history.replaceState !== 'function') return;
-    var search = String(location.search || '').replace(/^\\?/, '');
+    var search = String(location.search || '');
+    if (search.charAt(0) === '?') search = search.slice(1);
     var remaining = [];
     search.split('&').forEach(function (part) {
       if (!part) return;
       var key = part.split('=')[0] || '';
-      try { key = decodeURIComponent(key.replace(/\\+/g, ' ')); } catch (error) {}
+      try { key = decodeURIComponent(key.split('+').join(' ')); } catch (error) {}
       if (key !== 'code' && key !== 'state' && key !== 'error' && key !== 'error_description') remaining.push(part);
     });
     var url = String(location.pathname || '/') +
