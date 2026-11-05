@@ -1397,7 +1397,7 @@
 
         function setupController() {
             if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused })
+            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
         }
 
         function renderSubSection(slot, titleText, entries, visibleLimit) {
