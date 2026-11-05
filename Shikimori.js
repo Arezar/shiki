@@ -338,6 +338,7 @@
       Lampa.Input.edit({
         title: title,
         value: config[key],
+        password: key === 'client_secret',
         free: true,
         nosave: true
       }, function (value) {
@@ -400,6 +401,10 @@
       free: true,
       nosave: true
     }, function (value) {
+      if (!String(value || '').trim()) {
+        Lampa.Storage.set(OAUTH_STATE_KEY, '');
+        return;
+      }
       var parsed = parseOAuthRedirect(value);
       var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
       if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
@@ -420,7 +425,7 @@
           saveTokenResponse(response);
           Lampa.Storage.set(OAUTH_STATE_KEY, '');
           getShikimoriIdentity(function (user) {
-            Lampa.Noty.show('Аккаунт Shikimori подключён: ' + (user.nickname || user.name || user.id));
+            Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
             Lampa.Activity.push({
               url: '',
               title: 'Мой список Shikimori',
@@ -429,14 +434,14 @@
               accountList: true
             });
           }, function (error) {
-            Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + (error && error.message || 'ошибка API'));
+            Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
           });
         } catch (exception) {
           Lampa.Noty.show(exception.message);
         }
       }, function (xhr, status, message) {
         var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
-        Lampa.Noty.show('OAuth Shikimori: ' + (text || message || status || 'ошибка обмена кода'));
+        Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
       });
     });
   }
@@ -1178,7 +1183,7 @@
         runtimeCache.genres = (Array.isArray(response) ? response : []).filter(function (item) {
           return item && item.entry_type === 'Anime';
         }).map(function (item) {
-          return $.extend({}, item, { title: item.russian || item.name || String(item.id) });
+          return $.extend({}, item, { title: escapeHtml(item.russian || item.name || String(item.id)) });
         });
         filters.kind.items = runtimeCache.genres.map(function (item) {
           return $.extend({}, item, { code: String(item.id), checkbox: true });
@@ -1305,7 +1310,7 @@
         title: 'Фильтры Shikimori',
         items: [
           { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
-          { title: 'Поиск по названию', subtitle: filterState.search || 'Не задан', searchAnimes: true },
+          { title: 'Поиск по названию', subtitle: escapeHtml(filterState.search || 'Не задан'), searchAnimes: true },
           filters.kind,
           filters.type,
           filters.status,
@@ -1338,7 +1343,7 @@
       var user = account.user || {};
       var items = [];
       if (accountIsConnected()) {
-        items.push({ title: 'Мой список аниме', subtitle: (user.nickname || user.name || 'Shikimori'), openAccountList: true });
+        items.push({ title: 'Мой список аниме', subtitle: escapeHtml(user.nickname || user.name || 'Shikimori'), openAccountList: true });
         items.push({ title: 'Смотрю', subtitle: 'watching', accountStatus: 'watching' });
         items.push({ title: 'Запланировано', subtitle: 'planned', accountStatus: 'planned' });
         items.push({ title: 'Просмотрено', subtitle: 'completed', accountStatus: 'completed' });
@@ -1353,7 +1358,7 @@
       }
       items.push({ title: 'Настроить OAuth-приложение', configureOAuth: true });
       Lampa.Select.show({
-        title: accountIsConnected() ? 'Shikimori — ' + (user.nickname || user.name || 'аккаунт') : 'Аккаунт Shikimori',
+        title: accountIsConnected() ? 'Shikimori — ' + escapeHtml(user.nickname || user.name || 'аккаунт') : 'Аккаунт Shikimori',
         items: items,
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
@@ -1365,9 +1370,9 @@
           else if (chosen.configureOAuth) editOAuthSettings();
           else if (chosen.refreshAccount) {
             getShikimoriIdentity(function (profile) {
-              Lampa.Noty.show('Профиль обновлён: ' + (profile.nickname || profile.name || profile.id));
+              Lampa.Noty.show('Профиль обновлён: ' + escapeHtml(profile.nickname || profile.name || profile.id));
             }, function (error) {
-              Lampa.Noty.show('Не удалось обновить профиль: ' + (error && error.message || 'ошибка'));
+              Lampa.Noty.show('Не удалось обновить профиль: ' + escapeHtml(error && error.message || 'ошибка'));
             });
           } else if (chosen.disconnectAccount) disconnectShikimori();
         }
@@ -1446,7 +1451,7 @@
         ];
         if (rate && rate.id) menu.push({ title: 'Удалить из списка Shikimori', removeRate: true });
         Lampa.Select.show({
-          title: 'Мой список: ' + (anime.russian || anime.name || 'аниме'),
+          title: 'Мой список: ' + escapeHtml(anime.russian || anime.name || 'аниме'),
           items: menu,
           onBack: function () { Lampa.Controller.toggle('content'); },
           onSelect: function (chosen) {
@@ -1501,13 +1506,13 @@
                   }
                 }
               }, function (xhr, status, message) {
-                Lampa.Noty.show('Не удалось удалить запись: ' + (message || status || 'ошибка API'));
+                Lampa.Noty.show('Не удалось удалить запись: ' + escapeHtml(message || status || 'ошибка API'));
               });
             }
           }
         });
       }, function (xhr, status, message) {
-        Lampa.Noty.show('Не удалось прочитать запись Shikimori: ' + (message || status || 'ошибка API'));
+        Lampa.Noty.show('Не удалось прочитать запись Shikimori: ' + escapeHtml(message || status || 'ошибка API'));
       });
     }
 
@@ -1667,7 +1672,10 @@
       loading = false;
       network.clear();
       lookupNetwork.clear();
+      authGeneration += 1;
       authNetwork.clear();
+      refreshWaiters = [];
+      refreshInFlight = false;
       head.off();
       items.forEach(function (item) { item.destroy(); });
       scroll.destroy();
