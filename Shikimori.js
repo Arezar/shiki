@@ -388,13 +388,17 @@
       state: state
     });
 
+    var authWindow = null;
     try {
-      window.open(authUrl, '_blank');
+      if (typeof window.open === 'function') authWindow = window.open(authUrl, '_blank');
     } catch (exception) {
       console.warn('Shikimori: не удалось открыть окно OAuth', exception);
     }
-
-    Lampa.Noty.show('Разрешите доступ Shikimori и скопируйте полный URL после перенаправления, включая code и state');
+    if (!authWindow) {
+      Lampa.Noty.show('Если браузер не открылся, откройте ссылку вручную: ' + escapeHtml(authUrl));
+    } else {
+      Lampa.Noty.show('Разрешите доступ Shikimori и скопируйте полный URL после перенаправления, включая code и state');
+    }
     Lampa.Input.edit({
       title: 'Вставьте полный URL перенаправления Shikimori',
       value: '',
@@ -1354,7 +1358,6 @@
         items.push({ title: 'Отключить аккаунт', disconnectAccount: true });
       } else {
         items.push({ title: 'Подключить аккаунт Shikimori', connectAccount: true });
-        items.push({ title: 'У меня уже есть OAuth-настройки', connectAccount: true });
       }
       items.push({ title: 'Настроить OAuth-приложение', configureOAuth: true });
       Lampa.Select.show({
@@ -1423,8 +1426,13 @@
       scroll.update(nextElement, true);
     }
 
+    var rateMutationPending = false;
+
     function saveOrUpdateRate(anime, rate, changes) {
+      if (rateMutationPending) return;
+      rateMutationPending = true;
       saveUserRate(anime, rate, changes, function (result) {
+        rateMutationPending = false;
         var normalized = result && result.user_rate ? result.user_rate : result;
         anime.__user_rate = {
           id: normalized && normalized.id || rate && rate.id || null,
@@ -1439,6 +1447,7 @@
           if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
         }
       }, function (xhr, status, message) {
+        rateMutationPending = false;
         var apiMessage = xhr && xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message);
         Lampa.Noty.show('Не удалось обновить список Shikimori: ' + escapeHtml(apiMessage || message || status || 'ошибка API') +
           '. Проверьте scope user_rates в OAuth-приложении.');
@@ -1503,7 +1512,10 @@
                 saveOrUpdateRate(anime, rate, { episodes: episodes });
               });
             } else if (chosen.removeRate) {
+              if (rateMutationPending) return;
+              rateMutationPending = true;
               deleteUserRate(rate, function () {
+                rateMutationPending = false;
                 anime.__user_rate = null;
                 Lampa.Noty.show('Аниме удалено из списка Shikimori');
                 if (accountList) reloadCurrent();
@@ -1512,6 +1524,7 @@
                   if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
                 }
               }, function (xhr, status, message) {
+                rateMutationPending = false;
                 Lampa.Noty.show('Не удалось удалить запись: ' + escapeHtml(message || status || 'ошибка API'));
               });
             }
