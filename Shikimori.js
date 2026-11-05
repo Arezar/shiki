@@ -1901,14 +1901,14 @@
             var names = animeNames(anime)
             for (var i = 0; i < names.length; i++) {
                 var value = String(names[i])
-                var match = value.match(/(?:season|сезон|part|часть)\\s*(\\d+)|(?:^|\\s)(\\d+)\\s*(?:season|сезон|part|часть)\\b/i)
+                var match = value.match(/(?:season|сезон|part|часть)\s*(\d+)|(?:^|\s)(\d+)\s*(?:season|сезон|part|часть)\b/i)
                 if (match) return parseInt(match[1] || match[2], 10) || 0
-                match = value.match(/\\s+(?:ii|iii|iv|v|vi|vii|viii)$/i)
+                match = value.match(/\s+(?:ii|iii|iv|v|vi|vii|viii)$/i)
                 if (match) {
                     var roman = { ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8 }
                     return roman[match[0].trim().toLowerCase()] || 0
                 }
-                match = value.match(/\\s+(\\d+)$/)
+                match = value.match(/\s+(\d+)$/)
                 if (match) return parseInt(match[1], 10) || 0
             }
             return 0
