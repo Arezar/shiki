@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.3'
+    var VERSION = '1.5.4'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -31,15 +31,8 @@
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect width="100" height="150" fill="#24262f"/><circle cx="50" cy="75" r="18" fill="none" stroke="#3a3f4e" stroke-width="3"/></svg>'
     )
 
-    // Precompile Unicode property regex at runtime so ES5 parsers never fail at parse time;
-    // FALLBACK_NORM_RE covers Latin/Extended, Cyrillic, Hiragana, Katakana, Kanji/CJK, Hangul & Fullwidth in pure ES5
-    var UNICODE_NORM_RE = null
-    try {
-        UNICODE_NORM_RE = new RegExp('[^\\p{L}\\p{N}]+', 'gu')
-    } catch (e) {
-        UNICODE_NORM_RE = null
-    }
-    var FALLBACK_NORM_RE = /[^a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0400-\u052f\u1100-\u11ff\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]+/gi
+    // Modern WebView target (LG webOS): use full Unicode letter/number support.
+    var UNICODE_NORM_RE = /[^\p{L}\p{N}]+/gu;
 
     // ---------- in-memory TTL cache ----------
     var cacheStore = {}
@@ -371,11 +364,7 @@
     }
 
     function normalize(s) {
-        var str = (s || '').toLowerCase()
-        if (UNICODE_NORM_RE) {
-            return str.replace(UNICODE_NORM_RE, ' ').trim()
-        }
-        return str.replace(FALLBACK_NORM_RE, ' ').trim()
+        return String(s || '').toLowerCase().replace(UNICODE_NORM_RE, ' ').trim()
     }
 
     function stripSeasonSuffix(title) {
@@ -500,9 +489,9 @@
             '.shiki-toolbar .shiki-tab--active{background:rgba(255,255,255,.13);box-shadow:inset 0 -.16em 0 #efbd70;color:#fff}',
             '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-list{display:flex;flex-flow:row wrap;align-items:stretch;width:100%;max-width:100%;box-sizing:border-box}',
+            '.shiki-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8em;width:100%;max-width:100%;box-sizing:border-box;align-items:stretch}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
-            '.shiki-card{display:flex;flex:0 0 20%;width:20%;flex-direction:column;align-items:stretch;min-width:0;max-width:20%;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.4em;cursor:pointer}',
+            '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
             '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
             '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
             '.shiki-card__poster img{display:block;width:100%;height:14em;max-width:100%;object-fit:cover;border-radius:.22em;background:rgba(255,255,255,.07)}',
@@ -515,7 +504,7 @@
             '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
             '.shiki-card__score{color:#f0c477;font-weight:700;white-space:nowrap}',
             '.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.65);font-size:1em}',
-            '.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.8em 0 1.2em;cursor:pointer;font-weight:600}',
+            '.shiki-more,.shiki-retry{grid-column:1/-1;display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.2em 0 .6em;cursor:pointer;font-weight:600}',
             '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#fff;color:#111;outline:none}',
             '.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}',
             '.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}',
@@ -546,8 +535,9 @@
             '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
             '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
-            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card{flex-basis:25%;width:25%;max-width:25%}.shiki-card__poster img{height:12em}}',
-            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-card{flex-basis:33.333%;width:33.333%;max-width:33.333%}.shiki-card__poster img{height:10em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
+            '@media (max-width:1400px){.shiki-list{grid-template-columns:repeat(4,minmax(0,1fr))}}',
+            '@media (max-width:900px){.shiki-list{grid-template-columns:repeat(3,minmax(0,1fr))}}',
+            '@media (max-width:600px){.shiki-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
         ].join('')
         $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
     }
