@@ -113,10 +113,62 @@
     tmdb: {}
   };
 
+  var WATCHLIST_KEY = 'lme_shikimori_watchlist';
+  var WATCHLIST_LIMIT = 300;
+
+  function getWatchlist() {
+    var stored = Lampa.Storage.get(WATCHLIST_KEY, []);
+    if (!Array.isArray(stored)) return [];
+    var seen = {};
+    return stored.filter(function (anime) {
+      if (!anime || anime.id == null) return false;
+      var id = String(anime.id);
+      if (seen[id]) return false;
+      seen[id] = true;
+      return true;
+    }).slice(-WATCHLIST_LIMIT);
+  }
+
+  function toggleWatchlist(anime) {
+    if (!anime || anime.id == null) return false;
+    var list = getWatchlist();
+    var id = String(anime.id);
+    var existing = list.findIndex(function (item) { return String(item.id) === id; });
+    if (existing !== -1) {
+      list.splice(existing, 1);
+      Lampa.Storage.set(WATCHLIST_KEY, list);
+      return false;
+    }
+
+    list.push({
+      id: anime.id,
+      malId: anime.malId || null,
+      name: anime.name || '',
+      russian: anime.russian || '',
+      licenseNameRu: anime.licenseNameRu || '',
+      english: anime.english || '',
+      japanese: anime.japanese || '',
+      kind: anime.kind || '',
+      score: anime.score == null ? null : anime.score,
+      status: anime.status || '',
+      season: anime.season || '',
+      airedOn: anime.airedOn && anime.airedOn.year ? { year: anime.airedOn.year } : null,
+      poster: anime.poster && anime.poster.originalUrl ? { originalUrl: anime.poster.originalUrl } : null,
+      savedAt: Date.now()
+    });
+    Lampa.Storage.set(WATCHLIST_KEY, list.slice(-WATCHLIST_LIMIT));
+    return true;
+  }
+
+  function isWatchlisted(id) {
+    if (id == null) return false;
+    return getWatchlist().some(function (anime) { return String(anime.id) === String(id); });
+  }
+
   function main(params, oncomplite, onerror, network) {
     var query = [
-      'query Animes($limit: PositiveInt!, $page: PositiveInt!, $order: OrderEnum!, $kind: AnimeKindString, $status: AnimeStatusString, $genre: String, $season: SeasonString) {',
-      '  animes(limit: $limit, page: $page, order: $order, kind: $kind, status: $status, genre: $genre, season: $season) {',
+      'query Animes($limit: PositiveInt!, $page: PositiveInt!, $order: OrderEnum!, $kind: AnimeKindString, $status: AnimeStatusString, $genre: String, $season: SeasonString, $search: String, $score: Int, $rating: RatingString) {',
+      '  animes(limit: $limit, page: $page, order: $order, kind: $kind, status: $status, genre: $genre, season: $season, search: $search, score: $score, rating: $rating) {',
       '    id',
       '    malId',
       '    name',
@@ -144,6 +196,12 @@
     if (params && params.status) variables.status = String(params.status);
     if (params && params.genre) variables.genre = String(params.genre);
     if (params && params.seasons) variables.season = String(params.seasons);
+    if (params && params.search) variables.search = String(params.search).trim();
+    if (params && params.score != null && params.score !== '') {
+      var minScore = parseInt(params.score, 10);
+      if (minScore >= 1 && minScore <= 10) variables.score = minScore;
+    }
+    if (params && params.rating) variables.rating = String(params.rating);
 
     function complete(response) {
       if (!response || response.errors || !response.data || !Array.isArray(response.data.animes)) {
@@ -402,7 +460,9 @@
 
   var API = {
     main: main,
-    search: search
+    search: search,
+    getWatchlist: getWatchlist,
+    toggleWatchlist: toggleWatchlist
   };
 
   function Card(data, userLang) {
@@ -422,6 +482,7 @@
       type: escapeHtml(data.kind ? String(data.kind).toUpperCase() : 'ANIME'),
       status: escapeHtml(data.status ? String(data.status).charAt(0).toUpperCase() + String(data.status).slice(1) : ''),
       rate: escapeHtml(data.score == null ? '—' : data.score),
+      saved: isWatchlisted(data.id) ? '★' : '',
       title: escapeHtml(title || 'Без названия'),
       season: escapeHtml(season || airedYear || '')
     });
@@ -447,7 +508,7 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div><div class='LMEShikimori__watchlist simple-button simple-button--filter selector'>My list</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var active, last;
     var inited = false;
@@ -456,7 +517,12 @@
     var currentPage = 0;
     var pageSize = 36;
     var headerReady = false;
+    var watchlistButton = null;
     var self = this;
+
+    function updateWatchlistButton() {
+      if (watchlistButton) watchlistButton.text('My list (' + getWatchlist().length + ')');
+    }
 
 
     function getSeason(date) {
@@ -529,9 +595,21 @@
       scroll.append(body);
       html.append(scroll.render(true));
 
-      var firstPage = Math.max(1, parseInt(object && object.page, 10) || 1);
-      currentPage = firstPage - 1;
-      loadPage(firstPage);
+      if (object && object.watchlist) {
+        hasMore = false;
+        var savedAnime = getWatchlist();
+        if (savedAnime.length) {
+          self.build(savedAnime);
+          this.activity.loader(false);
+          this.activity.toggle();
+        } else {
+          self.empty();
+        }
+      } else {
+        var firstPage = Math.max(1, parseInt(object && object.page, 10) || 1);
+        currentPage = firstPage - 1;
+        loadPage(firstPage);
+      }
 
       return this.render();
     };
@@ -603,6 +681,27 @@
             { title: 'Released', code: 'released' }
           ]
         },
+        score: {
+          title: 'Minimum score',
+          items: [
+            { title: 'Any score', code: '' },
+            { title: '6+', code: '6' },
+            { title: '7+', code: '7' },
+            { title: '8+', code: '8' },
+            { title: '9+', code: '9' }
+          ]
+        },
+        rating: {
+          title: 'Age rating',
+          items: [
+            { title: 'Any rating', code: '' },
+            { title: 'G — all ages', code: 'g' },
+            { title: 'PG — children', code: 'pg' },
+            { title: 'PG-13 — teens', code: 'pg_13' },
+            { title: 'R — 17+', code: 'r' },
+            { title: 'R+ — mild nudity', code: 'r_plus' }
+          ]
+        },
         sort: {
           title: 'Sort',
           items: [
@@ -662,7 +761,7 @@
       }
 
       function queryForShikimori() {
-        var query = {};
+        var query = { search: object && object.search || '' };
 
         filters.AnimeKindEnum.items.forEach(function (item) {
           if (item.selected) query.kind = item.code;
@@ -678,6 +777,12 @@
         });
         filters.seasons.items.forEach(function (item) {
           if (item.selected) query.seasons = item.code;
+        });
+        filters.score.items.forEach(function (item) {
+          if (item.selected && item.code) query.score = item.code;
+        });
+        filters.rating.items.forEach(function (item) {
+          if (item.selected && item.code) query.rating = item.code;
         });
 
         return query;
@@ -726,8 +831,35 @@
         if (query.genre) params.genre = query.genre;
         if (query.sort) params.sort = query.sort;
         if (query.seasons) params.seasons = query.seasons;
+        if (query.score) params.score = query.score;
+        if (query.rating) params.rating = query.rating;
+        if (query.search) params.search = query.search;
 
         Lampa.Activity.push(params);
+      }
+
+      function promptTitleSearch() {
+        if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
+          Lampa.Noty.show('В этой версии Lampa поиск с клавиатурой недоступен');
+          return;
+        }
+        Lampa.Input.edit({
+          title: 'Search anime by title',
+          value: object && object.search || '',
+          free: true,
+          nosave: true
+        }, function (value) {
+          Lampa.Controller.toggle('content');
+          var title = String(value || '').trim();
+          if (!title) return;
+          Lampa.Activity.push({
+            url: '',
+            title: 'Search: ' + title,
+            component: 'LMEShikimori',
+            page: 1,
+            search: title
+          });
+        });
       }
 
       function mainMenu() {
@@ -738,10 +870,14 @@
         Lampa.Select.show({
           title: 'Filters',
           items: [
+            { title: 'Search by title', searchAnimes: true, subtitle: object && object.search || '' },
+            { title: 'My list (' + getWatchlist().length + ')', openWatchlist: true },
             { title: Lampa.Lang.translate('search_start'), searchShikimori: true },
             filters.status,
             filters.AnimeKindEnum,
             filters.kind,
+            filters.score,
+            filters.rating,
             filters.sort,
             filters.seasons
           ],
@@ -749,7 +885,16 @@
             Lampa.Controller.toggle('content');
           },
           onSelect: function (chosen) {
-            if (chosen && chosen.searchShikimori) search();
+            if (chosen && chosen.searchAnimes) promptTitleSearch();
+            else if (chosen && chosen.openWatchlist) {
+              Lampa.Activity.push({
+                url: '',
+                title: 'My Shikimori list',
+                component: 'LMEShikimori',
+                page: 1,
+                watchlist: true
+              });
+            } else if (chosen && chosen.searchShikimori) search();
             else if (chosen) submenu(chosen, mainMenu);
           }
         });
@@ -767,6 +912,20 @@
             title: 'Shikimori',
             component: 'LMEShikimori',
             page: 1
+          });
+        });
+
+      watchlistButton = head.find('.LMEShikimori__watchlist');
+      updateWatchlistButton();
+      watchlistButton
+        .off('hover:enter')
+        .on('hover:enter', function () {
+          Lampa.Activity.push({
+            url: '',
+            title: 'My Shikimori list',
+            component: 'LMEShikimori',
+            page: 1,
+            watchlist: true
           });
         });
     };
@@ -801,6 +960,21 @@
           if (!inited) return;
           lookupNetwork.clear();
           API.search(anime, lookupNetwork);
+        }).on('hover:long', function () {
+          if (!inited) return;
+          var added = toggleWatchlist(anime);
+          updateWatchlistButton();
+          card.find('.LMEShikimori__saved').text(added ? '★' : '');
+          Lampa.Noty.show(added
+            ? 'Добавлено в мой список: ' + (anime.russian || anime.name || 'аниме')
+            : 'Удалено из моего списка: ' + (anime.russian || anime.name || 'аниме'));
+          if (object && object.watchlist && !added) {
+            var savedIndex = items.indexOf(item);
+            if (savedIndex !== -1) items.splice(savedIndex, 1);
+            delete seenIds[id];
+            item.destroy();
+            if (!items.length) self.empty();
+          }
         });
 
         body.append(card);
@@ -978,15 +1152,16 @@
     window.plugin_shikimori_ready = true;
     var manifest = {
       type: "other",
-      version: "0.1",
+      version: "0.2",
       name: "LME Shikimori",
-      description: "Add Shikimori catalogue",
+      description: "Shikimori catalogue, title search and local watchlist",
       component: "LMEShikimori"
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>\n            .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori.card__type{background:#ff4242;color:#fff}.LMEShikimori .card__season{position:absolute;left:-0.8em;top:3.4em;padding:.4em .4em;background:#05f;color:#fff;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori .card__status{position:absolute;left:-0.8em;bottom:1em;padding:.4em .4em;background:#ffe216;color:#000;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori.card__season.no-season{display:none}\n        </style>");
-    Lampa.Template.add("LMEShikimori-Card", "<div class=\"LMEShikimori card selector layer--visible layer--render\">\n                <div class=\"LMEShikimori card__view\">\n                    <img src=\"{img}\" class=\"LMEShikimori card__img\" />\n                    <div class=\"LMEShikimori card__type\">{type}</div>\n                    <div class=\"LMEShikimori card__vote\">{rate}</div>\n                    <div class=\"LMEShikimori card__season\">{season}</div>\n                    <div class=\"LMEShikimori card__status\">{status}</div>\n                </div>\n                <div class=\"LMEShikimori card__title\">{title}</div>\n            </div>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>\n            .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori.card__type{background:#ff4242;color:#fff}.LMEShikimori .card__season{position:absolute;left:-0.8em;top:3.4em;padding:.4em .4em;background:#05f;color:#fff;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori .card__status{position:absolute;left:-0.8em;bottom:1em;padding:.4em .4em;background:#ffe216;color:#000;font-size:.8em;-webkit-border-radius:.3em;border-radius:.3em}.LMEShikimori__saved{position:absolute;right:.2em;top:.2em;z-index:2;padding:.2em .35em;background:#ffb900;color:#000;border-radius:.3em;font-size:1.1em}.LMEShikimori.card__season.no-season{display:none}\n        </style>");
+    Lampa.Template.add("LMEShikimori-Card", "<div class=\"LMEShikimori card selector layer--visible layer--render\">\n                <div class=\"LMEShikimori card__view\">\n                    <img src=\"{img}\" class=\"LMEShikimori card__img\" />\n                    <div class=\"LMEShikimori card__type\">{type}</div>\n                    <div class=\"LMEShikimori card__vote\">{rate}</div>\n                    <div class=\"LMEShikimori__saved\">{saved}</div>
+                    <div class=\"LMEShikimori card__season\">{season}</div>\n                    <div class=\"LMEShikimori card__status\">{status}</div>\n                </div>\n                <div class=\"LMEShikimori card__title\">{title}</div>\n            </div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
     Component();
