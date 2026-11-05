@@ -1289,7 +1289,7 @@
     function applyFilters() {
       var params = persistFilters();
       params.url = '';
-      params.title = params.search ? 'Shikimori: ' + params.search : 'Shikimori';
+      params.title = params.search ? 'Shikimori: ' + escapeHtml(params.search) : 'Shikimori';
       params.component = 'LMEShikimori';
       params.page = 1;
       Lampa.Activity.push(params);
