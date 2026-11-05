@@ -1,400 +1,365 @@
 (function () {
   'use strict';
 
-  function _arrayLikeToArray(r, a) {
-    (null == a || a > r.length) && (a = r.length);
-    for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
-    return n;
-  }
-  function _arrayWithoutHoles(r) {
-    if (Array.isArray(r)) return _arrayLikeToArray(r);
-  }
-  function asyncGeneratorStep(n, t, e, r, o, a, c) {
-    try {
-      var i = n[a](c),
-        u = i.value;
-    } catch (n) {
-      return void e(n);
-    }
-    i.done ? t(u) : Promise.resolve(u).then(r, o);
-  }
-  function _asyncToGenerator(n) {
-    return function () {
-      var t = this,
-        e = arguments;
-      return new Promise(function (r, o) {
-        var a = n.apply(t, e);
-        function _next(n) {
-          asyncGeneratorStep(a, r, o, _next, _throw, "next", n);
-        }
-        function _throw(n) {
-          asyncGeneratorStep(a, r, o, _next, _throw, "throw", n);
-        }
-        _next(void 0);
-      });
-    };
-  }
-  function _defineProperty(e, r, t) {
-    return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-      value: t,
-      enumerable: !0,
-      configurable: !0,
-      writable: !0
-    }) : e[r] = t, e;
-  }
-  function _iterableToArray(r) {
-    if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r);
-  }
-  function _nonIterableSpread() {
-    throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-  }
-  function ownKeys(e, r) {
-    var t = Object.keys(e);
-    if (Object.getOwnPropertySymbols) {
-      var o = Object.getOwnPropertySymbols(e);
-      r && (o = o.filter(function (r) {
-        return Object.getOwnPropertyDescriptor(e, r).enumerable;
-      })), t.push.apply(t, o);
-    }
-    return t;
-  }
-  function _objectSpread2(e) {
-    for (var r = 1; r < arguments.length; r++) {
-      var t = null != arguments[r] ? arguments[r] : {};
-      r % 2 ? ownKeys(Object(t), !0).forEach(function (r) {
-        _defineProperty(e, r, t[r]);
-      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) {
-        Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r));
-      });
-    }
-    return e;
-  }
-  function _regenerator() {
-    /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */
-    var e,
-      t,
-      r = "function" == typeof Symbol ? Symbol : {},
-      n = r.iterator || "@@iterator",
-      o = r.toStringTag || "@@toStringTag";
-    function i(r, n, o, i) {
-      var c = n && n.prototype instanceof Generator ? n : Generator,
-        u = Object.create(c.prototype);
-      return _regeneratorDefine(u, "_invoke", function (r, n, o) {
-        var i,
-          c,
-          u,
-          f = 0,
-          p = o || [],
-          y = !1,
-          G = {
-            p: 0,
-            n: 0,
-            v: e,
-            a: d,
-            f: d.bind(e, 4),
-            d: function (t, r) {
-              return i = t, c = 0, u = e, G.n = r, a;
-            }
-          };
-        function d(r, n) {
-          for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) {
-            var o,
-              i = p[t],
-              d = G.p,
-              l = i[2];
-            r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0));
-          }
-          if (o || r > 1) return a;
-          throw y = !0, n;
-        }
-        return function (o, p, l) {
-          if (f > 1) throw TypeError("Generator is already running");
-          for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) {
-            i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u);
-            try {
-              if (f = 2, i) {
-                if (c || (o = "next"), t = i[o]) {
-                  if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object");
-                  if (!t.done) return t;
-                  u = t.value, c < 2 && (c = 0);
-                } else 1 === c && (t = i.return) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1);
-                i = e;
-              } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break;
-            } catch (t) {
-              i = e, c = 1, u = t;
-            } finally {
-              f = 1;
-            }
-          }
-          return {
-            value: t,
-            done: y
-          };
-        };
-      }(r, o, i), !0), u;
-    }
-    var a = {};
-    function Generator() {}
-    function GeneratorFunction() {}
-    function GeneratorFunctionPrototype() {}
-    t = Object.getPrototypeOf;
-    var c = [][n] ? t(t([][n]())) : (_regeneratorDefine(t = {}, n, function () {
-        return this;
-      }), t),
-      u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c);
-    function f(e) {
-      return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e;
-    }
-    return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine(u), _regeneratorDefine(u, o, "Generator"), _regeneratorDefine(u, n, function () {
-      return this;
-    }), _regeneratorDefine(u, "toString", function () {
-      return "[object Generator]";
-    }), (_regenerator = function () {
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
       return {
-        w: i,
-        m: f
-      };
-    })();
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[character];
+    });
   }
-  function _regeneratorDefine(e, r, n, t) {
-    var i = Object.defineProperty;
-    try {
-      i({}, "", {});
-    } catch (e) {
-      i = 0;
-    }
-    _regeneratorDefine = function (e, r, n, t) {
-      function o(r, n) {
-        _regeneratorDefine(e, r, function (e) {
-          return this._invoke(r, n, e);
-        });
-      }
-      r ? i ? i(e, r, {
-        value: n,
-        enumerable: !t,
-        configurable: !t,
-        writable: !t
-      }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2));
-    }, _regeneratorDefine(e, r, n, t);
+
+  function safeImageUrl(value) {
+    var url = String(value || '').trim();
+    if (/^https?:\/\//i.test(url)) return escapeHtml(url);
+    if (/^\/\//.test(url)) return escapeHtml('https:' + url);
+    if (/^\//.test(url)) return escapeHtml('https://shikimori.one' + url);
+    return '';
   }
-  function _toConsumableArray(r) {
-    return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread();
-  }
-  function _toPrimitive(t, r) {
-    if ("object" != typeof t || !t) return t;
-    var e = t[Symbol.toPrimitive];
-    if (void 0 !== e) {
-      var i = e.call(t, r || "default");
-      if ("object" != typeof i) return i;
-      throw new TypeError("@@toPrimitive must return a primitive value.");
-    }
-    return ("string" === r ? String : Number)(t);
-  }
-  function _toPropertyKey(t) {
-    var i = _toPrimitive(t, "string");
-    return "symbol" == typeof i ? i : i + "";
-  }
-  function _unsupportedIterableToArray(r, a) {
-    if (r) {
-      if ("string" == typeof r) return _arrayLikeToArray(r, a);
-      var t = {}.toString.call(r).slice(8, -1);
-      return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0;
+
+  function requestGet(request, url, success, error) {
+    if (request && typeof request.silent === 'function') {
+      request.silent(url, success, error, null, { timeout: 15000 });
+    } else {
+      $.ajax({
+        url: url,
+        method: 'GET',
+        timeout: 15000,
+        dataType: 'json',
+        success: success,
+        error: error
+      });
     }
   }
 
-  function main(params, oncomplite, onerror) {
-    $(document).ready(function () {
-      // Начинаем формировать запрос с базовыми параметрами
-      var query = "\n            query Animes {\n                animes(limit: 36, order: ".concat(params.sort || 'aired_on', ", page: ").concat(params.page, "\n        ");
+  var runtimeCache = {
+    genres: null,
+    tmdb: {}
+  };
 
-      // Добавляем фильтры, если они присутствуют в params
-      if (params.kind) {
-        query += ", kind: \"".concat(params.kind, "\"");
-      }
-      if (params.status) {
-        query += ", status: \"".concat(params.status, "\"");
-      }
-      if (params.genre) {
-        query += ", genre: \"".concat(params.genre, "\"");
-      }
-      if (params.seasons) {
-        query += ", season: \"".concat(params.seasons, "\"");
+  function main(params, oncomplite, onerror, network) {
+    var query = [
+      'query Animes($limit: PositiveInt!, $page: PositiveInt!, $order: OrderEnum!, $kind: AnimeKindString, $status: AnimeStatusString, $genre: String, $season: SeasonString) {',
+      '  animes(limit: $limit, page: $page, order: $order, kind: $kind, status: $status, genre: $genre, season: $season) {',
+      '    id',
+      '    malId',
+      '    name',
+      '    russian',
+      '    licenseNameRu',
+      '    english',
+      '    japanese',
+      '    kind',
+      '    score',
+      '    status',
+      '    season',
+      '    airedOn { year }',
+      '    poster { originalUrl }',
+      '  }',
+      '}'
+    ].join('\n');
+
+    var variables = {
+      limit: 36,
+      page: Math.max(1, parseInt(params && params.page, 10) || 1),
+      order: params && params.sort || 'aired_on'
+    };
+
+    if (params && params.kind) variables.kind = String(params.kind);
+    if (params && params.status) variables.status = String(params.status);
+    if (params && params.genre) variables.genre = String(params.genre);
+    if (params && params.seasons) variables.season = String(params.seasons);
+
+    function complete(response) {
+      if (!response || response.errors || !response.data || !Array.isArray(response.data.animes)) {
+        var message = response && response.errors
+          ? response.errors.map(function (item) { return item.message || 'GraphQL error'; }).join('; ')
+          : 'Некорректный ответ Shikimori API';
+        if (typeof onerror === 'function') onerror({ message: message, response: response });
+        return;
       }
 
-      // Закрываем параметры и продолжаем запрос
-      query += ") {\n                    id\n                    name\n                    russian\n                    licenseNameRu\n                    english\n                    japanese\n                    kind\n                    score\n                    status\n                    season\n                    airedOn { year }\n                    poster {\n                        originalUrl\n                    }\n                }\n            }\n        ";
+      if (typeof oncomplite === 'function') oncomplite(response.data.animes);
+    }
+
+    function failed(error) {
+      console.error('Shikimori: ошибка GraphQL-запроса', error);
+      if (typeof onerror === 'function') onerror(error || { message: 'Network error' });
+    }
+
+    var payload = {
+      query: query,
+      variables: variables
+    };
+
+    if (network && typeof network.silent === 'function') {
+      network.silent(
+        'https://shikimori.one/api/graphql',
+        complete,
+        failed,
+        payload,
+        { timeout: 15000 }
+      );
+    } else {
       $.ajax({
         url: 'https://shikimori.one/api/graphql',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({
-          query: query
-        }),
-        success: function success(response) {
-          oncomplite(response.data.animes);
+        dataType: 'json',
+        timeout: 15000,
+        data: JSON.stringify(payload),
+        success: complete,
+        error: failed
+      });
+    }
+  }
+
+  function search(animeData, network) {
+    var apiKey = '4ef0d7355d9ffb5151e987764708ce96';
+    var language = Lampa.Storage.field('language') || 'en';
+    var cacheKey = String(animeData && animeData.id || '');
+    var cache = runtimeCache.tmdb[cacheKey];
+    var primaryTitle = language === 'ru'
+      ? (animeData.russian || animeData.name || animeData.english)
+      : (animeData.name || animeData.english || animeData.russian);
+    var fallbackTitles = [
+      primaryTitle,
+      animeData.japanese,
+      animeData.russian,
+      animeData.english
+    ].filter(function (title, index, list) {
+      return title && list.indexOf(title) === index;
+    });
+    var fallbackIndex = 0;
+
+    function cleanName(name) {
+      return String(name || '')
+        .replace(/\b(Season|Part)\s*\d*\.?\d*\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    function tmdbBase() {
+      var domain = Lampa.Manifest && Lampa.Manifest.cub_domain
+        ? Lampa.Manifest.cub_domain
+        : 'cub.red';
+      return Lampa.Storage.field('proxy_tmdb')
+        ? Lampa.Utils.protocol() + 'apitmdb.' + domain + '/3/'
+        : 'https://api.themoviedb.org/3/';
+    }
+
+    function tmdbUrl(path) {
+      return tmdbBase() + path + (path.indexOf('?') === -1 ? '?' : '&') +
+        'api_key=' + encodeURIComponent(apiKey) +
+        '&language=' + encodeURIComponent(language);
+    }
+
+    function openFull(card, mediaType) {
+      if (!card || !card.id || (mediaType !== 'movie' && mediaType !== 'tv')) return;
+      Lampa.Activity.push({
+        url: '',
+        component: 'full',
+        id: card.id,
+        method: mediaType,
+        card: card
+      });
+    }
+
+    function noResults() {
+      Lampa.Noty.show('Не удалось найти соответствие в TMDB');
+    }
+
+    function normalizeTitle(value) {
+      return cleanName(value).toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+    }
+
+    function rankCandidate(item) {
+      var names = [
+        item.title,
+        item.name,
+        item.original_title,
+        item.original_name
+      ].filter(Boolean).map(normalizeTitle);
+      var wanted = fallbackTitles.map(normalizeTitle);
+      var score = 0;
+      names.forEach(function (name) {
+        wanted.forEach(function (title) {
+          if (!name || !title) return;
+          if (name === title) score = Math.max(score, 100);
+          else if (name.indexOf(title) === 0 || title.indexOf(name) === 0) score = Math.max(score, 70);
+          else if (name.indexOf(title) !== -1 || title.indexOf(name) !== -1) score = Math.max(score, 45);
+        });
+      });
+
+      if (animeData.kind === 'movie' && item.media_type === 'movie') score += 8;
+      if (animeData.kind !== 'movie' && item.media_type === 'tv') score += 8;
+
+      var animeYear = animeData.airedOn && parseInt(animeData.airedOn.year, 10);
+      var itemDate = item.release_date || item.first_air_date || '';
+      var itemYear = parseInt(itemDate.slice(0, 4), 10);
+      if (animeYear && itemYear) {
+        var yearDiff = Math.abs(animeYear - itemYear);
+        if (yearDiff === 0) score += 12;
+        else if (yearDiff === 1) score += 6;
+        else if (yearDiff > 3) score -= 8;
+      }
+      return score;
+    }
+
+    function showCandidates(results) {
+      var candidates = (Array.isArray(results) ? results : []).filter(function (item) {
+        return item && item.id && (item.media_type === 'movie' || item.media_type === 'tv');
+      });
+
+      candidates.sort(function (left, right) {
+        return rankCandidate(right) - rankCandidate(left);
+      });
+
+      if (!candidates.length) {
+        searchNextTitle();
+        return;
+      }
+
+      runtimeCache.tmdb[cacheKey] = { results: candidates.slice(0, 10) };
+
+      if (candidates.length === 1) {
+        openFull(candidates[0], candidates[0].media_type);
+        return;
+      }
+
+      var menu = candidates.slice(0, 10).map(function (item) {
+        var title = item.title || item.name || item.original_title || item.original_name || 'Без названия';
+        return {
+          title: '[' + item.media_type.toUpperCase() + '] ' + title,
+          card: item
+        };
+      });
+
+      Lampa.Select.show({
+        title: 'Выбор соответствия TMDB',
+        items: menu,
+        onBack: function () {
+          Lampa.Controller.toggle('content');
         },
-        error: function error(_error) {
-          console.error('Shikimori', 'Error:', _error);
-          onerror(_error); // Вызов onerror при ошибке запроса
+        onSelect: function (selected) {
+          if (selected && selected.card) openFull(selected.card, selected.card.media_type);
         }
       });
-    });
-  }
-  function search(animeData) {
-    //Cleaner
-    function cleanName(name) {
-      // Регулярное выражение для удаления фраз "Season", "Part" и цифр рядом с ними
-      var regex = /\b(Season|Part)\s*\d*\.?\d*\b/gi;
-
-      // Удаляем нежелательные фразы
-      var cleanedName = name.replace(regex, '').trim();
-
-      // Удаляем лишние пробелы
-      cleanedName = cleanedName.replace(/\s{2,}/g, ' ');
-      return cleanedName;
     }
 
-    // Первый GET запрос к https://animeapi.my.id/shikimori/{animeData.id}
-    $.get("https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=".concat(animeData.id), function (response) {
-      if (response === null) {
-        console.log('Shikimori', 'We here step#1');
-        // Если получили 404, продолжаем искать на TMDB
-        searchTmdb(animeData.name, function (tmdbResponse) {
-          handleTmdbResponse(tmdbResponse, animeData.japanese);
-        });
-      } else if (response.themoviedb === null) {
-        console.log('Shikimori', 'We here step#2');
-        // Если themoviedb: null, делаем запрос к https://api.themoviedb.org/3/search/multi?include_adult=true&query={animeData.name}
-        searchTmdb(animeData.name, function (tmdbResponse) {
-          handleTmdbResponse(tmdbResponse, animeData.japanese);
-        });
-      } else {
-        console.log('Shikimori', 'We here step#3', animeData.kind);
-        // Если themoviedb не равно null, делаем запрос к https://api.themoviedb.org/3/movie/{response.themoviedb}
-        getTmdb(response.themoviedb, animeData.kind, processResults);
+    function searchTmdb(title) {
+      var cleaned = cleanName(title);
+      if (!cleaned) {
+        searchNextTitle();
+        return;
       }
-    }).fail(function (jqXHR) {
-      if (jqXHR.status === 404) {
-        // Если получили 404, продолжаем искать на TMDB
-        searchTmdb(animeData.name, function (tmdbResponse) {
-          handleTmdbResponse(tmdbResponse, animeData.japanese);
-        });
-      } else {
-        console.error('Error fetching data from animeapi.my.id:', jqXHR.status);
+
+      var url = tmdbUrl('search/multi') +
+        '&include_adult=true&query=' + encodeURIComponent(cleaned);
+
+      requestGet(network, url, function (response) {
+        var results = response && Array.isArray(response.results) ? response.results : [];
+        if (results.length) showCandidates(results);
+        else searchNextTitle();
+      }, function () {
+        searchNextTitle();
+      });
+    }
+
+    function searchNextTitle() {
+      if (fallbackIndex >= fallbackTitles.length) {
+        noResults();
+        return;
       }
-    });
-    function searchTmdb(query, callback) {
-      //PFS
-      var apiKey = "4ef0d7355d9ffb5151e987764708ce96";
-      var apiUrlTMDB = 'https://api.themoviedb.org/3/';
-      var apiUrlProxy = 'apitmdb.' + (Lampa.Manifest && Lampa.Manifest.cub_domain ? Lampa.Manifest.cub_domain : 'cub.red') + '/3/';
-      var request = "search/multi?api_key=".concat(apiKey, "&language=").concat(Lampa.Storage.field('language'), "&include_adult=true&query=").concat(cleanName(query));
-      $.get(Lampa.Storage.field('proxy_tmdb') ? Lampa.Utils.protocol() + apiUrlProxy + request : apiUrlTMDB + request, callback);
+
+      var title = fallbackTitles[fallbackIndex++];
+      searchTmdb(title);
     }
-    function getTmdb(id) {
-      var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'movie';
-      var callback = arguments.length > 2 ? arguments[2] : undefined;
-      console.log('Shikimori', 'id:', id, 'type:', type);
-      var apiKey = "4ef0d7355d9ffb5151e987764708ce96";
-      var apiUrlTMDB = 'https://api.themoviedb.org/3/';
-      var apiUrlProxy = 'apitmdb.' + (Lampa.Manifest && Lampa.Manifest.cub_domain ? Lampa.Manifest.cub_domain : 'cub.red') + '/3/';
-      var request = "".concat(type, "/").concat(id, "?api_key=").concat(apiKey, "&language=").concat(Lampa.Storage.field('language'));
-      $.get(Lampa.Storage.field('proxy_tmdb') ? Lampa.Utils.protocol() + apiUrlProxy + request : apiUrlTMDB + request, callback);
-    }
-    function handleTmdbResponse(tmdbResponse, fallbackQuery) {
-      if (tmdbResponse.total_results === 0) {
-        // Если результатов нет, делаем запрос с японским именем
-        searchTmdb(fallbackQuery, handleFallbackResponse);
-      } else {
-        processResults(tmdbResponse);
-      }
-    }
-    function handleFallbackResponse(fallbackResponse) {
-      processResults(fallbackResponse);
-    }
-    function processResults(response) {
-      var menu = [];
-      if (response.total_results !== undefined) {
-        // Обработка результата от поиска (search/multi)
-        if (response.total_results === 0) {
-          Lampa.Noty.show('Бядосе, обыскали все углы и ничего не нашли');
-        } else if (response.total_results === 1) {
-          Lampa.Activity.push({
-            url: '',
-            component: 'full',
-            id: response.results[0].id,
-            method: response.results[0].media_type,
-            card: response.results[0]
-          });
-        } else if (response.total_results > 1) {
-          response.results.forEach(function (animeItem) {
-            menu.push({
-              title: "[".concat(animeItem.media_type.toUpperCase(), "] ").concat(animeItem.name ? animeItem.name : animeItem.title),
-              card: animeItem
-            });
-          });
-          Lampa.Select.show({
-            title: 'Find',
-            items: menu,
-            onBack: function onBack() {
-              Lampa.Controller.toggle("content");
-            },
-            onSelect: function onSelect(a) {
-              Lampa.Activity.push({
-                url: '',
-                component: 'full',
-                id: a.card.id,
-                method: a.card.media_type,
-                card: a.card
-              });
-            }
-          });
+
+    function getMappedTmdb(id) {
+      var mediaType = animeData.kind === 'movie' ? 'movie' : 'tv';
+      var url = tmdbUrl(mediaType + '/' + encodeURIComponent(id));
+
+      requestGet(network, url, function (response) {
+        if (!response || !response.id) {
+          searchNextTitle();
+          return;
         }
-      } else {
-        // Обработка результата от запроса по ID (movie/{id})
-        Lampa.Activity.push({
-          url: '',
-          component: 'full',
-          id: response.id,
-          method: response.number_of_episodes ? 'tv' : 'movie',
-          card: response
-        });
-      }
+
+        runtimeCache.tmdb[cacheKey] = {
+          detail: response,
+          mediaType: mediaType
+        };
+        openFull(response, mediaType);
+      }, function () {
+        searchNextTitle();
+      });
+    }
+
+    if (!animeData || !animeData.id) return;
+
+    if (cache && cache.detail) {
+      openFull(cache.detail, cache.mediaType);
+      return;
+    }
+    if (cache && cache.results && cache.results.length) {
+      showCandidates(cache.results);
+      return;
+    }
+
+    if (animeData.malId) {
+      var mappingUrl = 'https://arm.haglund.dev/api/v2/ids?source=myanimelist&id=' +
+        encodeURIComponent(animeData.malId);
+
+      requestGet(network, mappingUrl, function (response) {
+        var mapping = Array.isArray(response) ? response[0] : response;
+        if (mapping && mapping.themoviedb) getMappedTmdb(mapping.themoviedb);
+        else searchNextTitle();
+      }, function () {
+        searchNextTitle();
+      });
+    } else {
+      searchNextTitle();
     }
   }
+
   var API = {
     main: main,
     search: search
   };
 
   function Card(data, userLang) {
-    var formattedSeason = data.season ? data.season.replace('_', ' ').replace(/^\w/, function (c) {
-      return c.toUpperCase();
-    }) : '';
-    function capitalizeFirstLetter(string) {
-      if (!string) return string; // Проверка на пустую строку или null/undefined
-      return string.charAt(0).toUpperCase() + string.slice(1);
-    }
-    var item = Lampa.Template.get("LMEShikimori-Card", {
-      img: data.poster.originalUrl,
-      type: data.kind.toUpperCase(),
-      status: capitalizeFirstLetter(data.status),
-      rate: data.score,
-      title: userLang === 'ru' ? data.russian || data.name || data.japanese : data.name || data.japanese,
-      //seasonID: data.season,
-      //seasonID: data.season !== null ? data.season : data.airedOn.year, // Проверка на null
-      season: data.season !== null ? formattedSeason : data.airedOn.year // Проверка на null,
+    data = data || {};
+
+    var season = data.season
+      ? String(data.season).replace('_', ' ').replace(/^\w/, function (character) {
+          return character.toUpperCase();
+        })
+      : '';
+    var airedYear = data.airedOn && data.airedOn.year ? data.airedOn.year : '';
+    var title = userLang === 'ru'
+      ? (data.russian || data.licenseNameRu || data.name || data.japanese)
+      : (data.name || data.english || data.japanese || data.russian);
+    var item = Lampa.Template.get('LMEShikimori-Card', {
+      img: safeImageUrl(data.poster && data.poster.originalUrl),
+      type: escapeHtml(data.kind ? String(data.kind).toUpperCase() : 'ANIME'),
+      status: escapeHtml(data.status ? String(data.status).charAt(0).toUpperCase() + String(data.status).slice(1) : ''),
+      rate: escapeHtml(data.score == null ? '—' : data.score),
+      title: escapeHtml(title || 'Без названия'),
+      season: escapeHtml(season || airedYear || '')
     });
-    /**
-    if (!formattedSeason) {
-        $(item).find('.LMEShikimori.card__season').addClass('no-season');
-    }
-    **/
+
     this.render = function () {
       return item;
     };
+
     this.destroy = function () {
-      item.remove();
+      if (item && item.remove) item.remove();
     };
   }
 
