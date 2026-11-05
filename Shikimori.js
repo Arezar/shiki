@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.6'
+    var VERSION = '1.5.7'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -821,18 +821,16 @@
             net = optionalNet || createNetwork(12000)
         }
 
-        var engFirst = (Array.isArray(animeObj.english) && animeObj.english[0]) ? animeObj.english[0] : ''
-        var primaryQueries = dedupeQueries([animeObj.name, engFirst, animeObj.russian])
+        var englishTitles = Array.isArray(animeObj.english) ? animeObj.english : [animeObj.english]
+        var synonyms = Array.isArray(animeObj.synonyms) ? animeObj.synonyms : [animeObj.synonyms]
+        var engFirst = englishTitles[0] || ''
+        var primaryQueries = dedupeQueries([animeObj.name].concat(englishTitles, [animeObj.russian], synonyms))
         if (!primaryQueries.length) {
             callback([], false)
             return
         }
 
-        var fallbackQueries = dedupeQueries([
-            stripSeasonSuffix(animeObj.name),
-            stripSeasonSuffix(engFirst),
-            stripSeasonSuffix(animeObj.russian)
-        ]).filter(function (q) {
+        var fallbackQueries = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)).filter(function (q) {
             var nq = normalize(q)
             for (var i = 0; i < primaryQueries.length; i++) {
                 if (normalize(primaryQueries[i]) === nq) return false
@@ -840,13 +838,9 @@
             return Boolean(nq)
         })
 
-        var targetNorms = dedupeQueries([
-            animeObj.name,
-            engFirst,
-            animeObj.russian,
-            stripSeasonSuffix(animeObj.name),
-            stripSeasonSuffix(engFirst)
-        ]).map(normalize).filter(Boolean)
+        var targetNorms = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).concat(
+            [animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)
+        )).map(normalize).filter(Boolean)
 
         var targetYear = animeObj.aired_on ? parseInt(String(animeObj.aired_on).substr(0, 4), 10) : 0
 
@@ -2105,7 +2099,11 @@
     function attachShikiRating(job, result) {
         if (!job || !result || !job.item) return
         var html = job.item.html
-        if (!html || typeof html.find !== 'function') return
+        if (!html || typeof html.find !== 'function') {
+            job.attachTries = (job.attachTries || 0) + 1
+            if (job.attachTries <= 8) setTimeout(function () { attachShikiRating(job, result) }, 250)
+            return
+        }
         var view = html.find('.card__view').first()
         if (!view.length) {
             job.attachTries = (job.attachTries || 0) + 1
