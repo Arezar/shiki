@@ -21,9 +21,71 @@
     return '';
   }
 
+  function NetworkManager(timeout) {
+    var active = [];
+    var defaultTimeout = timeout || 15000;
+
+    function track(options) {
+      var xhr = $.ajax(options);
+      if (xhr && typeof xhr.always === 'function') {
+        active.push(xhr);
+        xhr.always(function () {
+          var index = active.indexOf(xhr);
+          if (index !== -1) active.splice(index, 1);
+        });
+      }
+      return xhr;
+    }
+
+    this.get = function (url, success, error) {
+      return track({
+        url: url,
+        method: 'GET',
+        dataType: 'json',
+        timeout: defaultTimeout,
+        success: success,
+        error: error
+      });
+    };
+
+    this.postJson = function (url, payload, success, error) {
+      return track({
+        url: url,
+        method: 'POST',
+        contentType: 'application/json; charset=UTF-8',
+        dataType: 'json',
+        processData: false,
+        timeout: defaultTimeout,
+        data: JSON.stringify(payload),
+        success: success,
+        error: error
+      });
+    };
+
+    this.errorDecode = function (error, status) {
+      var text = error && (error.responseJSON && error.responseJSON.message || error.responseText || error.message);
+      if (status === 'timeout' || error && error.statusText === 'timeout') return 'Превышено время ожидания запроса';
+      if (status === 'abort' || error && error.statusText === 'abort') return 'Запрос отменён';
+      if (error && error.status === 0) return 'Нет соединения с сервером';
+      if (error && error.status) return 'Ошибка HTTP ' + error.status + (text ? ': ' + text : '');
+      return text || 'Неизвестная ошибка сети';
+    };
+
+    this.clear = function () {
+      active.slice().forEach(function (xhr) {
+        try {
+          if (xhr && typeof xhr.abort === 'function') xhr.abort();
+        } catch (error) {
+          console.warn('Shikimori: ошибка отмены запроса', error);
+        }
+      });
+      active = [];
+    };
+  }
+
   function requestGet(request, url, success, error) {
-    if (request && typeof request.silent === 'function') {
-      request.silent(url, success, error, null, { timeout: 15000 });
+    if (request && typeof request.get === 'function') {
+      request.get(url, success, error);
     } else {
       $.ajax({
         url: url,
@@ -95,14 +157,8 @@
       variables: variables
     };
 
-    if (network && typeof network.silent === 'function') {
-      network.silent(
-        'https://shikimori.one/api/graphql',
-        complete,
-        failed,
-        payload,
-        { timeout: 15000 }
-      );
+    if (network && typeof network.postJson === 'function') {
+      network.postJson('https://shikimori.one/api/graphql', payload, complete, failed);
     } else {
       $.ajax({
         url: 'https://shikimori.one/api/graphql',
@@ -367,8 +423,8 @@
 
   function Component$1(object) {
     var userLang = Lampa.Storage.field('language') || 'en';
-    var network = new Lampa.Reguest();
-    var lookupNetwork = new Lampa.Reguest();
+    var network = new NetworkManager(15000);
+    var lookupNetwork = new NetworkManager(15000);
     var scroll = new Lampa.Scroll({
       mask: true,
       over: true,
@@ -388,8 +444,6 @@
     var headerReady = false;
     var self = this;
 
-    network.timeout(15000);
-    lookupNetwork.timeout(15000);
 
     function getSeason(date) {
       var month = date.getMonth();
@@ -794,8 +848,7 @@
     if (window.plugin_shikimori_full_listener) return;
     window.plugin_shikimori_full_listener = true;
 
-    fullNetwork = new Lampa.Reguest();
-    fullNetwork.timeout(15000);
+    fullNetwork = new NetworkManager(15000);
 
     function valuesToText(values) {
       if (!Array.isArray(values)) return '';
