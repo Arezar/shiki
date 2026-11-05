@@ -202,7 +202,9 @@ function testOAuthRedirectParsing() {
   const raw = api.parseOAuthRedirect('one-time-code');
   assert.equal(raw.code, 'one-time-code');
   assert.equal(raw.state, '');
-  assert.deepEqual(api.parseOAuthRedirect('https://example.test/?code=%E0%A4%A&state=x'), { code: '', state: '' });
+  const malformed = api.parseOAuthRedirect('https://example.test/?code=%E0%A4%A&state=x');
+  assert.equal(malformed.code, '');
+  assert.equal(malformed.state, '');
 }
 
 function testConcurrentTokenRefresh() {
