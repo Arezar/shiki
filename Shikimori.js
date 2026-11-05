@@ -942,7 +942,7 @@
     }
 
     function createSeasonItems() {
-      var seasons = [
+      var ranges = [
         { title: '2020-е', code: '2020_2029' },
         { title: '2010-е', code: '2010_2019' },
         { title: '2000-е', code: '2000_2009' },
@@ -950,15 +950,18 @@
         { title: '1980-е', code: '198x' },
         { title: 'До 1980-х', code: 'ancient' }
       ];
+      var seasons = [];
       var now = new Date();
       for (var offset = -12; offset <= 4; offset++) {
         var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
         var code = getSeason(date);
         if (seasons.indexOf(code) === -1) seasons.push(code);
       }
-      return [{ title: 'Любой сезон / год', code: '' }].concat(seasons.map(function (code) {
-        return { title: code.replace('_', ' '), code: code };
-      }));
+      return [{ title: 'Любой сезон / год', code: '' }]
+        .concat(ranges)
+        .concat(seasons.map(function (code) {
+          return { title: code.replace('_', ' '), code: code };
+        }));
     }
 
     var filters = {
