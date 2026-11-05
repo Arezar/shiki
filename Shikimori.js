@@ -494,8 +494,6 @@
             '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8em;width:100%;max-width:100%;box-sizing:border-box;align-items:stretch}',
-            '.shikimori-full-rating{display:flex;align-items:center;gap:.55em;margin-top:.65em;color:rgba(255,255,255,.68);font-size:.95em;line-height:1.4}',
-            '.shikimori-full-rating span{color:#f2c477;font-weight:700}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
             '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
             '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
@@ -2204,6 +2202,12 @@
             return
         }
 
+        job.attachTries = (job.attachTries || 0) + 1
+        if (job.attachTries <= 8) {
+            setTimeout(function () { attachShikiRating(job, result) }, 250)
+            return
+        }
+
         // Older full-card layouts can still show the rating beside the info row.
         var info = root.find('.info__rate').first()
         if (info.length) info.after(rating)
@@ -2217,8 +2221,12 @@
         var cached = cacheGet(key)
 
         function finish(result) {
-            if (result && !result.notFound) attachShikiRating(job, result)
-            else cacheSet(key, { notFound: true })
+            if (result && !result.notFound && formatScore(result.score)) {
+                cacheSet(key, result)
+                attachShikiRating(job, result)
+            } else {
+                cacheSet(key, { notFound: true })
+            }
             shikiRatingBusy = false
             setTimeout(processShikiRatingQueue, 180)
         }
@@ -2257,7 +2265,9 @@
 
         if (job.tmdbId) {
             lookupShikiByTmdbId(job.tmdbId, function (anime) {
-                finish({ id: anime.id, score: formatScore(anime.score) })
+                var score = formatScore(anime.score)
+                if (score) finish({ id: anime.id, score: score })
+                else fallbackByTitle()
             }, fallbackByTitle)
         } else {
             fallbackByTitle()
