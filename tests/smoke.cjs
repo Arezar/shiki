@@ -435,7 +435,7 @@ function testCatalogueRetryAfterInitialFailure() {
   const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
   const firstRequest = graphqlRequests()[0];
   assert.ok(firstRequest, 'initial catalogue request should start');
-  const initialLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
+  const initialLoading = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__loading-info') !== -1).pop();
   assert.ok(initialLoading && source.includes('Загружается каталог Shikimori'), 'initial load should render a visible progress status');
   firstRequest.xhr.reject(503, { message: 'Service unavailable' });
   assert.equal(initialLoading.removed, true, 'loading status should be removed after a request failure');
@@ -448,7 +448,7 @@ function testCatalogueRetryAfterInitialFailure() {
   const retryRequest = graphqlRequests()[1];
   assert.equal(JSON.parse(retryRequest.options.data).variables.page, 1, 'retry should request the failed page');
   assert.equal(retry.removed, true, 'retry control should disappear once retry starts');
-  const retryLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
+  const retryLoading = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__loading-info') !== -1).pop();
   assert.ok(retryLoading && source.includes('Повторная загрузка каталога'), 'retry should render a visible loading status');
 
   retryRequest.xhr.resolve({ data: { animes: [{ id: 9001, name: 'Retry success' }] } });
