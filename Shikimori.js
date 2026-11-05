@@ -220,6 +220,15 @@
         return names[match[1]] + ' ' + match[2]
     }
 
+    function durationTitle(value) {
+        var map = {
+            S: '< 10 ' + tr('shikimori_minutes'),
+            D: '< 30 ' + tr('shikimori_minutes'),
+            F: '30+ ' + tr('shikimori_minutes')
+        }
+        return map[value] || value
+    }
+
     function orderTitle(value) {
         var map = {
             popularity: isRu() ? 'Популярность' : 'Popularity',
@@ -1196,7 +1205,7 @@
             if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
             if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + seasonTitle(filters.season))
             if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
-            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + filters.duration)
+            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + durationTitle(filters.duration))
             if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
             if (filters.genre) parts.push(tr('shikimori_filter_genre') + ': ' + genreTitle(filters.genre))
             if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + orderTitle(filters.order))
