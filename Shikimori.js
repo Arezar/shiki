@@ -1953,6 +1953,74 @@
         } catch (e) {}
     }
 
+    // Resolve a TMDB card through ARM's TMDB -> MAL mapping, then match MAL IDs
+    // against Shikimori GraphQL results. MAL IDs are never passed as Shikimori IDs.
+    function matchShikiCandidatesByMalId(candidates, malIds, net, success, failure) {
+        if (!Array.isArray(candidates) || !candidates.length || !Array.isArray(malIds) || !malIds.length) {
+            if (typeof failure === 'function') failure()
+            return
+        }
+
+        var shikiIds = candidates.map(function (anime) {
+            return anime && anime.id ? String(anime.id) : ''
+        }).filter(Boolean)
+        if (!shikiIds.length || typeof $.ajax !== 'function') {
+            if (typeof failure === 'function') failure()
+            return
+        }
+
+        var hosts = getHostCandidates()
+        var hostIndex = 0
+        var query = 'query($ids: String!) { animes(ids: $ids, limit: 50) { id malId } }'
+
+        function tryHost() {
+            if (net && net._shikiCancelled) return
+            if (hostIndex >= hosts.length) {
+                if (typeof failure === 'function') failure()
+                return
+            }
+            var host = hosts[hostIndex++]
+            try {
+                $.ajax({
+                    url: host + '/api/graphql',
+                    method: 'POST',
+                    contentType: 'application/json; charset=utf-8',
+                    dataType: 'json',
+                    data: JSON.stringify({ query: query, variables: { ids: shikiIds.join(',') } }),
+                    timeout: 10000
+                }).done(function (response) {
+                    if (net && net._shikiCancelled) return
+                    var rows = response && response.data && Array.isArray(response.data.animes)
+                        ? response.data.animes
+                        : []
+                    var matched = null
+                    for (var i = 0; i < rows.length; i++) {
+                        var row = rows[i]
+                        if (!row || !row.id || !row.malId) continue
+                        if (malIds.indexOf(String(row.malId)) < 0) continue
+                        for (var j = 0; j < candidates.length; j++) {
+                            if (String(candidates[j].id) === String(row.id)) {
+                                matched = candidates[j]
+                                break
+                            }
+                        }
+                        if (matched) break
+                    }
+                    if (matched) {
+                        if (typeof success === 'function') success(matched)
+                    } else {
+                        tryHost()
+                    }
+                }).fail(function () {
+                    tryHost()
+                })
+            } catch (e) {
+                tryHost()
+            }
+        }
+        tryHost()
+    }
+
     // ---------- open from a foreign TMDB/Lampa card ----------
     // ---------- open from a foreign TMDB/Lampa card ----------
     function openShikimoriForCard(card) {
@@ -1991,6 +2059,7 @@
 
         var modalNet = createNetwork(12000)
         var cancelled = false
+        var mappingRequest = null
 
         function stopLoading() {
             try { Lampa.Loading.stop() } catch (e) {}
@@ -2006,6 +2075,7 @@
             if (prevActivity && active && active !== prevActivity) {
                 cancelled = true
                 modalNet.clear()
+                if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
                 stopLoading()
                 return false
             }
@@ -2015,6 +2085,7 @@
         function cancelSearch() {
             cancelled = true
             modalNet.clear()
+            if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
             stopLoading()
             if (prevCtrl) {
                 try { Lampa.Controller.toggle(prevCtrl) } catch (e) {}
@@ -2095,9 +2166,85 @@
             tryQuery(0)
         }
 
-        // Lampa cards may aggregate an entire franchise. Search the cleaned base title
-        // directly and let the user choose when Shikimori returns several seasons.
-        searchByBaseTitle()
+        function finishWithMappedAnime(anime) {
+            if (!canContinue() || !anime || !anime.id) return
+            shikiDetails(modalNet, anime.id, function (details) {
+                if (!canContinue()) return
+                stopLoading()
+                pushDetails(details)
+            }, function () {
+                if (canContinue()) searchByBaseTitle()
+            })
+        }
+
+        function searchByBaseTitle(malIds) {
+            var gathered = []
+            var seen = {}
+            function tryQuery(index) {
+                if (!canContinue()) return
+                if (index >= queries.length) {
+                    if (malIds && malIds.length && gathered.length) {
+                        matchShikiCandidatesByMalId(gathered, malIds, modalNet, finishWithMappedAnime, function () {
+                            if (canContinue()) showResults(gathered)
+                        })
+                    } else {
+                        showResults(gathered)
+                    }
+                    return
+                }
+                shikiSearch(modalNet, queries[index], 1, function (animes) {
+                    if (!canContinue()) return
+                    if (Array.isArray(animes)) {
+                        animes.forEach(function (anime) {
+                            if (!anime || !anime.id || seen[String(anime.id)]) return
+                            seen[String(anime.id)] = true
+                            gathered.push(anime)
+                        })
+                    }
+                    tryQuery(index + 1)
+                }, function () {
+                    if (canContinue()) tryQuery(index + 1)
+                })
+            }
+            tryQuery(0)
+        }
+
+        function searchWithTmdbMapping() {
+            if (!card.id || typeof $.ajax !== 'function') {
+                searchByBaseTitle([])
+                return
+            }
+            try {
+                mappingRequest = $.ajax({
+                    url: 'https://arm.haglund.dev/api/v2/themoviedb?id=' + encodeURIComponent(card.id),
+                    method: 'GET',
+                    dataType: 'json',
+                    timeout: 10000
+                })
+                mappingRequest.done(function (mapped) {
+                    if (!canContinue()) return
+                    var malIds = []
+                    function addMalId(value) {
+                        var id = String(value || '').trim()
+                        if (/^\\d+$/.test(id) && malIds.indexOf(id) < 0) malIds.push(id)
+                    }
+                    if (Array.isArray(mapped)) {
+                        mapped.forEach(function (item) { if (item) addMalId(item.myanimelist) })
+                    } else if (mapped && typeof mapped === 'object') {
+                        addMalId(mapped.myanimelist)
+                    }
+                    searchByBaseTitle(malIds)
+                }).fail(function () {
+                    if (canContinue()) searchByBaseTitle([])
+                })
+            } catch (e) {
+                searchByBaseTitle([])
+            }
+        }
+
+        // Lampa supplies a TMDB ID. Resolve it to MAL first, then compare that MAL ID
+        // with Shikimori's malId field; only the actual Shikimori ID is used for details.
+        searchWithTmdbMapping()
     }
 
     // ---------- menu item ----------
