@@ -27,8 +27,10 @@ const exportForTests = [
 source = source.replace(startMarker, exportForTests);
 
 const ajaxCalls = [];
+const jqueryInstances = [];
 const storage = {};
 let lastTemplate = null;
+let emptyCreated = 0;
 const scrollInstances = [];
 
 function FakeJQuery(selector) {
@@ -36,6 +38,7 @@ function FakeJQuery(selector) {
   this.length = 1;
   this.nodes = [];
   this.handlers = {};
+  jqueryInstances.push(this);
 }
 FakeJQuery.prototype.eq = function () { return this; };
 FakeJQuery.prototype.append = function (value) { this.nodes.push(value); return this; };
@@ -110,6 +113,7 @@ const Lampa = {
   Utils: { protocol: () => 'https://' },
   Arrays: { destroy() {} },
   Empty: function () {
+    emptyCreated++;
     this.render = () => new FakeJQuery('empty');
     this.start = function () {};
   },
@@ -306,6 +310,9 @@ function testNativeCardBadgesAndIdIsolation() {
   assert.equal(appended[0].attrs.class, 'card__type LMEShikimori__kind');
   assert.equal(appended[1].attrs.class, 'LMEShikimori__user-status');
   card.destroy();
+  Lampa.Manifest.app_digital = 200;
+  delete Lampa.Maker;
+  delete Lampa.Template.elem;
 }
 
 function testRestoredFiltersAreStableAcrossPages() {
@@ -350,6 +357,50 @@ function testRestoredFiltersAreStableAcrossPages() {
   storage.lme_shikimori_filters_v1 = {};
 }
 
+function testPaginationDeduplicationAndDestroy() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const body = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori-catalog--list') !== -1);
+  assert.ok(body, 'catalogue container should be created');
+  const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
+  const firstPage = graphqlRequests()[0];
+  const firstBatch = Array.from({ length: 36 }, (_, index) => ({ id: index + 1, name: 'Anime ' + (index + 1) }));
+  firstPage.xhr.resolve({ data: { animes: firstBatch } });
+  assert.equal(body.nodes.length, 36);
+
+  scrollInstances[scrollInstances.length - 1].onEnd();
+  scrollInstances[scrollInstances.length - 1].onEnd();
+  assert.equal(graphqlRequests().length, 2, 'scroll lock should allow one next-page request');
+
+  const secondPage = graphqlRequests()[1];
+  const secondBatch = [{ id: 36, name: 'duplicate' }].concat(
+    Array.from({ length: 35 }, (_, index) => ({ id: 37 + index, name: 'Anime ' + (37 + index) }))
+  );
+  secondPage.xhr.resolve({ data: { animes: secondBatch } });
+  assert.equal(body.nodes.length, 71, 'duplicate id must be skipped across pages');
+
+  scrollInstances[scrollInstances.length - 1].onEnd();
+  const thirdPage = graphqlRequests()[2];
+  component.destroy();
+  assert.equal(thirdPage.xhr.aborted, true, 'destroy must abort an in-flight page request');
+}
+
+function testEmptyRestoredPage() {
+  ajaxCalls.length = 0;
+  const before = emptyCreated;
+  const component = new api.Component({ page: 2 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const request = ajaxCalls.find(item => item.options.url === 'https://shikimori.one/api/graphql');
+  request.xhr.resolve({ data: { animes: [] } });
+  assert.equal(emptyCreated, before + 1, 'empty state must render when a restored page is empty');
+  component.destroy();
+}
+
 function testLegacyCardFallbackSafety() {
   new api.Card({
     id: 5,
@@ -380,6 +431,8 @@ testUserRateNormalization();
 testV1AccountRateNormalization();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
+testPaginationDeduplicationAndDestroy();
+testEmptyRestoredPage();
 testLegacyCardFallbackSafety();
 
-process.stdout.write('Shikimori smoke tests: PASS (9 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
