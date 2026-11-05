@@ -363,7 +363,7 @@ function testPaginationDeduplicationAndDestroy() {
   component.activity = { loader() {}, toggle() {} };
   component.create();
 
-  const body = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori-catalog--list') !== -1);
+  const body = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori-catalog--list') !== -1).pop();
   assert.ok(body, 'catalogue container should be created');
   const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
   const firstPage = graphqlRequests()[0];
