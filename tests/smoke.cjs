@@ -377,6 +377,9 @@ testGraphQLVariablesAndFilterCoverage();
 testOAuthRedirectParsing();
 testConcurrentTokenRefresh();
 testUserRateNormalization();
+testV1AccountRateNormalization();
+testNativeCardBadgesAndIdIsolation();
+testRestoredFiltersAreStableAcrossPages();
 testLegacyCardFallbackSafety();
 
-process.stdout.write('Shikimori smoke tests: PASS (5 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (9 groups)\n');
