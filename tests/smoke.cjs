@@ -358,7 +358,8 @@ function testEmptyRestoredPage() {
 function testNoAccountAuthorizationRemains() {
   assert.equal(Object.keys(storage.lme_shikimori_account_v1).length, 0, 'legacy OAuth credentials and tokens must be cleared');
   assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
-  assert.doesNotMatch(source, /\\/oauth\\/|client_secret|refresh_token|user_rates|whoami/i);
+  assert.equal(source.indexOf('/oauth/'), -1, 'OAuth endpoints must be removed');
+  assert.doesNotMatch(source, /client_secret|refresh_token|user_rates|whoami/i);
   assert.doesNotMatch(source, /accountMenu|connectShikimori|disconnectShikimori|authenticatedRequest|accountList|Shikimori__account|authNetwork|authGeneration|refreshWaiters|refreshInFlight/);
   assert.doesNotMatch(source, /Изменить запись в Shikimori|Мой список Shikimori/);
 }
