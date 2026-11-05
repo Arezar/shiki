@@ -116,638 +116,7 @@
   };
 
 
-  var ACCOUNT_STORAGE_KEY = 'lme_shikimori_account_v1';
   var FILTERS_STORAGE_KEY = 'lme_shikimori_filters_v1';
-  var OAUTH_STATE_KEY = 'lme_shikimori_oauth_state';
-
-  function readAccount() {
-    var value = Lampa.Storage.get(ACCOUNT_STORAGE_KEY, {});
-    return value && typeof value === 'object' ? value : {};
-  }
-
-  function writeAccount(value) {
-    Lampa.Storage.set(ACCOUNT_STORAGE_KEY, value || {});
-  }
-
-  function readOAuthConfig() {
-    var account = readAccount();
-    return {
-      client_id: String(account.client_id || ''),
-      client_secret: String(account.client_secret || ''),
-      redirect_uri: String(account.redirect_uri || '')
-    };
-  }
-
-  function saveOAuthConfig(config) {
-    var account = readAccount();
-    account.client_id = String(config.client_id || '').trim();
-    account.client_secret = String(config.client_secret || '').trim();
-    account.redirect_uri = String(config.redirect_uri || '').trim();
-    writeAccount(account);
-  }
-
-  function accountIsConnected() {
-    var account = readAccount();
-    return !!(account.access_token && account.user && account.user.id);
-  }
-
-  function encodeForm(data) {
-    return Object.keys(data || {}).map(function (key) {
-      return encodeURIComponent(key) + '=' + encodeURIComponent(data[key] == null ? '' : String(data[key]));
-    }).join('&');
-  }
-
-  var authNetwork = new NetworkManager(20000);
-  var authGeneration = 0;
-
-  function requestOAuthToken(payload, success, error) {
-    var generation = authGeneration;
-    authNetwork.request({
-      url: 'https://shikimori.io/oauth/token',
-      method: 'POST',
-      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-      processData: false,
-      dataType: 'json',
-      timeout: 20000,
-      data: encodeForm(payload),
-      success: function (response) {
-        if (generation === authGeneration && typeof success === 'function') success(response);
-      },
-      error: function (xhr, status, message) {
-        if (generation === authGeneration && typeof error === 'function') error(xhr, status, message);
-      }
-    });
-  }
-
-  function saveTokenResponse(response, previous) {
-    if (!response || !response.access_token) throw new Error('Shikimori не вернул access_token');
-    var account = previous || readAccount();
-    account.access_token = response.access_token;
-    if (response.refresh_token) account.refresh_token = response.refresh_token;
-    account.expires_at = Date.now() + (Math.max(60, parseInt(response.expires_in, 10) || 86400) * 1000);
-    writeAccount(account);
-    return account;
-  }
-
-  var refreshInFlight = false;
-  var refreshWaiters = [];
-
-  function settleRefresh(error, token) {
-    var waiters = refreshWaiters.slice();
-    refreshWaiters = [];
-    refreshInFlight = false;
-    waiters.forEach(function (waiter) {
-      var callback = error ? waiter.error : waiter.success;
-      if (typeof callback === 'function') callback(error || token);
-    });
-  }
-
-  function refreshAccessToken(success, error) {
-    refreshWaiters.push({ success: success, error: error });
-    if (refreshInFlight) return;
-
-    var account = readAccount();
-    var config = readOAuthConfig();
-    if (!account.refresh_token || !config.client_id || !config.client_secret) {
-      settleRefresh({ message: 'Нет refresh token. Подключите аккаунт Shikimori заново.' });
-      return;
-    }
-
-    refreshInFlight = true;
-    var refreshGeneration = authGeneration;
-    requestOAuthToken({
-      grant_type: 'refresh_token',
-      client_id: config.client_id,
-      client_secret: config.client_secret,
-      refresh_token: account.refresh_token
-    }, function (response) {
-      try {
-        if (refreshGeneration !== authGeneration) {
-          settleRefresh({ message: 'Аккаунт Shikimori был отключён во время обновления токена' });
-          return;
-        }
-        var current = readAccount();
-        if (current.refresh_token !== account.refresh_token) {
-          settleRefresh({ message: 'Данные аккаунта изменились. Повторите запрос.' });
-          return;
-        }
-        var updated = saveTokenResponse(response, current);
-        settleRefresh(null, updated.access_token);
-      } catch (exception) {
-        settleRefresh({ message: exception.message });
-      }
-    }, function (xhr, status, message) {
-      settleRefresh(xhr || { message: message || status || 'Не удалось обновить токен' });
-    });
-  }
-
-  function ensureAccessToken(success, error) {
-    var account = readAccount();
-    if (account.access_token && account.expires_at && account.expires_at > Date.now() + 60000) {
-      success(account.access_token);
-      return;
-    }
-    refreshAccessToken(success, error);
-  }
-
-  function authenticatedRequest(options, success, error, retried) {
-    var requestGeneration = authGeneration;
-    ensureAccessToken(function (token) {
-      if (requestGeneration !== authGeneration) return;
-      var requestOptions = $.extend({}, options, {
-        timeout: options.timeout || 20000,
-        headers: $.extend({}, options.headers || {}, { Authorization: 'Bearer ' + token }),
-        success: function (response) {
-          if (requestGeneration === authGeneration && typeof success === 'function') success(response);
-        },
-        error: function (xhr, status, message) {
-          if (requestGeneration !== authGeneration || status === 'abort') return;
-          if (xhr && xhr.status === 401 && !retried) {
-            refreshAccessToken(function () {
-              if (requestGeneration === authGeneration) authenticatedRequest(options, success, error, true);
-            }, error);
-            return;
-          }
-          if (typeof error === 'function') error(xhr, status, message);
-        }
-      });
-      authNetwork.request(requestOptions);
-    }, function (failure) {
-      if (requestGeneration === authGeneration && typeof error === 'function') error(failure);
-    });
-  }
-
-  function getShikimoriIdentity(success, error) {
-    authenticatedRequest({
-      url: 'https://shikimori.one/api/users/whoami',
-      method: 'GET',
-      dataType: 'json'
-    }, function (user) {
-      if (!user || user.id == null) {
-        if (typeof error === 'function') error({ message: 'Не удалось определить пользователя Shikimori' });
-        return;
-      }
-      var account = readAccount();
-      account.user = user;
-      writeAccount(account);
-      if (typeof success === 'function') success(user);
-    }, error);
-  }
-
-  function generateOAuthState() {
-    var cryptoObject = window.crypto;
-    if (!cryptoObject || typeof cryptoObject.getRandomValues !== 'function') {
-      throw new Error('В этой версии Lampa недоступен безопасный генератор случайных чисел');
-    }
-    var bytes = new Uint8Array(24);
-    cryptoObject.getRandomValues(bytes);
-    return Array.prototype.map.call(bytes, function (byte) {
-      return ('0' + byte.toString(16)).slice(-2);
-    }).join('');
-  }
-
-  function parseOAuthRedirect(value) {
-    var input = String(value || '').trim();
-    var result = { code: '', state: '' };
-    if (!input) return result;
-    var query = input;
-    var question = query.indexOf('?');
-    if (question !== -1) query = query.slice(question + 1);
-    var hash = query.indexOf('#');
-    if (hash !== -1) query = query.slice(0, hash);
-    try {
-      query.split('&').forEach(function (part) {
-        if (!part) return;
-        var pair = part.split('=');
-        var key = decodeURIComponent(pair.shift() || '');
-        var val = decodeURIComponent(pair.join('=') || '');
-        if (key === 'code') result.code = val;
-        if (key === 'state') result.state = val;
-      });
-    } catch (exception) {
-      return { code: '', state: '' };
-    }
-    if (!result.code && input.indexOf('://') === -1 && input.indexOf('?') === -1 && input.indexOf('=') === -1) {
-      result.code = input;
-    }
-    return result;
-  }
-
-  function currentLampaRedirectUri() {
-    var location = window.location;
-    if (!location || !location.pathname) return '';
-    var origin = location.origin || (location.protocol && location.host ? location.protocol + '//' + location.host : '');
-    return /^https:\/\//i.test(String(origin)) ? String(origin) + String(location.pathname) : '';
-  }
-
-  function clearOAuthCallbackFromAddressBar() {
-    var location = window.location;
-    if (!location || !window.history || typeof window.history.replaceState !== 'function') return;
-    var search = String(location.search || '');
-    if (search.charAt(0) === '?') search = search.slice(1);
-    var remaining = [];
-    search.split('&').forEach(function (part) {
-      if (!part) return;
-      var key = part.split('=')[0] || '';
-      try { key = decodeURIComponent(key.split('+').join(' ')); } catch (error) {}
-      if (key !== 'code' && key !== 'state' && key !== 'error' && key !== 'error_description') remaining.push(part);
-    });
-    var url = String(location.pathname || '/') +
-      (remaining.length ? '?' + remaining.join('&') : '') +
-      String(location.hash || '');
-    try { window.history.replaceState({}, '', url); } catch (error) {
-      console.warn('Shikimori: не удалось очистить OAuth URL', error);
-    }
-  }
-
-  function finishOAuthConnection(response) {
-    try {
-      saveTokenResponse(response);
-      getShikimoriIdentity(function (user) {
-        Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
-        Lampa.Activity.push({
-          url: '',
-          title: 'Мой список Shikimori',
-          component: 'LMEShikimori',
-          page: 1,
-          accountList: true
-        });
-      }, function (error) {
-        Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
-      });
-    } catch (exception) {
-      Lampa.Noty.show(exception.message);
-    }
-  }
-
-  function exchangeOAuthCode(parsed, config) {
-    // OAuth state is single-use: consume it before exchanging the authorization code.
-    Lampa.Storage.set(OAUTH_STATE_KEY, '');
-    requestOAuthToken({
-      grant_type: 'authorization_code',
-      client_id: config.client_id,
-      client_secret: config.client_secret,
-      code: parsed.code,
-      redirect_uri: config.redirect_uri
-    }, finishOAuthConnection, function (xhr, status, message) {
-      var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
-      Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
-    });
-  }
-
-  function showOAuthContinueMenu(authUrl, config) {
-    Lampa.Select.show({
-      title: 'Завершите вход в Shikimori',
-      items: [
-        { title: 'Я вошёл — вставить адрес возврата', pasteOAuthRedirect: true },
-        { title: 'Скопировать ссылку для входа ещё раз', copyOAuthUrl: true },
-        { title: 'Отменить вход', cancelOAuth: true }
-      ],
-      onBack: function () { Lampa.Storage.set(OAUTH_STATE_KEY, ''); },
-      onSelect: function (choice) {
-        if (choice && choice.pasteOAuthRedirect) {
-          Lampa.Input.edit({
-            title: 'Вставьте полный URL возврата из Shikimori',
-            value: '',
-            free: true,
-            nosave: true
-          }, function (value) {
-            var parsed = parseOAuthRedirect(value);
-            var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
-            if (!String(value || '').trim()) {
-              showOAuthContinueMenu(authUrl, config);
-              return;
-            }
-            if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
-              Lampa.Noty.show('Ссылка не подошла. Нужен полный URL с code и state. Попробуйте ещё раз.');
-              showOAuthContinueMenu(authUrl, config);
-              return;
-            }
-            Lampa.Select.show({
-              title: 'Подключить аккаунт Shikimori?',
-              items: [
-                { title: 'Да, подключить аккаунт', confirmOAuth: true },
-                { title: 'Нет, вернуться', cancelOAuth: true }
-              ],
-              onBack: function () { showOAuthContinueMenu(authUrl, config); },
-              onSelect: function (confirm) {
-                if (confirm && confirm.confirmOAuth) exchangeOAuthCode(parsed, config);
-                else showOAuthContinueMenu(authUrl, config);
-              }
-            });
-          });
-        } else if (choice && choice.copyOAuthUrl) {
-          if (Lampa.Utils && typeof Lampa.Utils.copyTextToClipboard === 'function') {
-            Lampa.Utils.copyTextToClipboard(authUrl, function () {
-              Lampa.Noty.show('Ссылка скопирована. Откройте её в браузере и разрешите доступ.');
-              showOAuthContinueMenu(authUrl, config);
-            }, function () {
-              Lampa.Noty.show('Не удалось скопировать ссылку. Откройте её на экране авторизации.');
-              showOAuthContinueMenu(authUrl, config);
-            });
-          } else {
-            Lampa.Noty.show('Скопируйте или откройте ссылку вручную: ' + escapeHtml(authUrl));
-            showOAuthContinueMenu(authUrl, config);
-          }
-        } else {
-          Lampa.Storage.set(OAUTH_STATE_KEY, '');
-        }
-      }
-    });
-  }
-
-  function showOAuthStartMenu(authUrl, config) {
-    Lampa.Select.show({
-      title: 'Вход в Shikimori',
-      items: [
-        { title: 'Открыть страницу входа на этом устройстве', openOAuth: true },
-        { title: 'Скопировать ссылку для входа на телефоне', copyOAuthUrl: true },
-        { title: 'Отмена', cancelOAuth: true }
-      ],
-      onBack: function () { Lampa.Storage.set(OAUTH_STATE_KEY, ''); },
-      onSelect: function (choice) {
-        if (choice && choice.openOAuth) {
-          var opened = null;
-          try {
-            if (typeof window.open === 'function') opened = window.open(authUrl, '_blank');
-          } catch (error) {
-            console.warn('Shikimori: не удалось открыть окно OAuth', error);
-          }
-          if (!opened) {
-            Lampa.Noty.show('Браузер не открылся. Попробуйте скопировать ссылку и открыть её на телефоне.');
-          } else {
-            Lampa.Noty.show('Разрешите доступ в открывшемся окне. Если возврат не сработает автоматически, вернитесь сюда и вставьте URL.');
-          }
-          showOAuthContinueMenu(authUrl, config);
-        } else if (choice && choice.copyOAuthUrl) {
-          if (Lampa.Utils && typeof Lampa.Utils.copyTextToClipboard === 'function') {
-            Lampa.Utils.copyTextToClipboard(authUrl, function () {
-              Lampa.Noty.show('Ссылка скопирована. Откройте её в браузере на телефоне.');
-              showOAuthContinueMenu(authUrl, config);
-            }, function () {
-              Lampa.Noty.show('Не удалось скопировать ссылку. Попробуйте открыть её на этом устройстве.');
-              showOAuthStartMenu(authUrl, config);
-            });
-          } else {
-            Lampa.Noty.show('Ссылка для входа: ' + escapeHtml(authUrl));
-            showOAuthContinueMenu(authUrl, config);
-          }
-        } else {
-          Lampa.Storage.set(OAUTH_STATE_KEY, '');
-        }
-      }
-    });
-  }
-
-  function handleOAuthCallbackFromLocation() {
-    if (!window.location || !window.location.href) return false;
-    var parsed = parseOAuthRedirect(window.location.href);
-    var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
-    if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) return false;
-    var config = readOAuthConfig();
-    if (!config.client_id || !config.client_secret || !config.redirect_uri) return false;
-    clearOAuthCallbackFromAddressBar();
-    Lampa.Noty.show('Возврат из Shikimori получен. Завершаем вход…');
-    exchangeOAuthCode(parsed, config);
-    return true;
-  }
-
-  function editOAuthSettings(done) {
-    var config = readOAuthConfig();
-    var fields = [
-      { key: 'client_id', title: 'Shikimori OAuth — Client ID' },
-      { key: 'client_secret', title: 'Shikimori OAuth — Client Secret', password: true },
-      { key: 'redirect_uri', title: 'Shikimori OAuth — Redirect URI' }
-    ];
-
-    function menu() {
-      var items = [];
-      var suggestedRedirect = currentLampaRedirectUri();
-      if (suggestedRedirect) {
-        items.push({ title: 'Использовать адрес этой Lampa', subtitle: suggestedRedirect, useCurrentRedirect: true });
-      }
-      items.push(
-          { title: 'Client ID', subtitle: config.client_id ? 'Настроен' : 'Не задан', field: fields[0] },
-          { title: 'Client Secret', subtitle: config.client_secret ? 'Настроен' : 'Не задан', field: fields[1] },
-          { title: 'Redirect URI', subtitle: escapeHtml(config.redirect_uri || 'Не задан'), field: fields[2] },
-          { title: 'Сохранить настройки', saveOAuth: true }
-      );
-      Lampa.Select.show({
-        title: 'Настройки OAuth Shikimori',
-        items: items,
-        onBack: function () {},
-        onSelect: function (chosen) {
-          if (chosen && chosen.useCurrentRedirect) {
-            config.redirect_uri = suggestedRedirect;
-            return menu();
-          }
-          if (chosen && chosen.saveOAuth) {
-            if (!config.client_id || !config.client_secret || !config.redirect_uri) {
-              Lampa.Noty.show('Заполните Client ID, Client Secret и Redirect URI');
-              return menu();
-            }
-            saveOAuthConfig(config);
-            Lampa.Noty.show('Параметры OAuth сохранены локально на этом устройстве');
-            if (typeof done === 'function') done(config);
-            return;
-          }
-          if (!chosen || !chosen.field || !Lampa.Input || typeof Lampa.Input.edit !== 'function') return;
-          var field = chosen.field;
-          Lampa.Input.edit({
-            title: field.title,
-            value: config[field.key],
-            password: !!field.password,
-            free: true,
-            nosave: true
-          }, function (value) {
-            config[field.key] = String(value || '').trim();
-            // Lampa.Input.edit invokes its callback on both Enter and Back.
-            // Returning to this menu makes Back a harmless cancel instead of
-            // accidentally advancing through a chain of credential prompts.
-            menu();
-          });
-        }
-      });
-    }
-
-    menu();
-  }
-
-  function connectShikimori() {
-    var config = readOAuthConfig();
-    if (!config.client_id || !config.client_secret || !config.redirect_uri) {
-      editOAuthSettings(function () { connectShikimori(); });
-      return;
-    }
-    if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
-      Lampa.Noty.show('Для OAuth-входа нужна версия Lampa с экранной клавиатурой');
-      return;
-    }
-
-    var state;
-    try {
-      state = generateOAuthState();
-    } catch (exception) {
-      Lampa.Noty.show(exception.message);
-      return;
-    }
-    Lampa.Storage.set(OAUTH_STATE_KEY, state);
-
-    var authUrl = 'https://shikimori.io/oauth/authorize?' + encodeForm({
-      client_id: config.client_id,
-      redirect_uri: config.redirect_uri,
-      response_type: 'code',
-      scope: 'user_rates',
-      state: state
-    });
-
-    showOAuthStartMenu(authUrl, config);
-  }
-
-  function disconnectShikimori() {
-    authGeneration += 1;
-    authNetwork.clear();
-    refreshWaiters = [];
-    refreshInFlight = false;
-    Lampa.Storage.set(OAUTH_STATE_KEY, '');
-    var config = readOAuthConfig();
-    writeAccount({
-      client_id: config.client_id,
-      client_secret: config.client_secret,
-      redirect_uri: config.redirect_uri
-    });
-    Lampa.Noty.show('Аккаунт Shikimori отключён на этом устройстве');
-  }
-
-  function normalizeUserRateEntry(entry) {
-    entry = entry || {};
-    var rate = entry.user_rate || entry.userRate || entry;
-    var target = entry.anime || entry.target || entry;
-    var anime = $.extend({}, target);
-    // v1 anime_rates uses image.original and aired_on; catalogue GraphQL uses poster/airedOn.
-    if (!anime.poster && anime.image) {
-      var original = anime.image.original || anime.image.preview || anime.image.x96 || anime.image.x48;
-      var normalizedImage = imageUrlValue(original);
-      if (normalizedImage) anime.poster = { originalUrl: normalizedImage, mainUrl: normalizedImage };
-    }
-    if (!anime.airedOn && anime.aired_on) {
-      var airedDate = String(anime.aired_on);
-      var airedYear = parseInt(airedDate.slice(0, 4), 10);
-      anime.airedOn = { date: airedDate, year: isFinite(airedYear) ? airedYear : null };
-      var airedMonth = parseInt(airedDate.slice(5, 7), 10);
-      if (isFinite(airedYear) && isFinite(airedMonth)) {
-        var season = airedMonth <= 2 || airedMonth === 12 ? 'winter' : airedMonth <= 5 ? 'spring' : airedMonth <= 8 ? 'summer' : 'fall';
-        anime.season = season + ' ' + airedYear;
-      }
-    }
-    anime.__user_rate = {
-      id: rate.id || entry.user_rate_id || null,
-      user_id: rate.user_id || null,
-      target_id: rate.target_id || anime.id,
-      status: rate.status || '',
-      score: parseInt(rate.score, 10) || 0,
-      episodes: parseInt(rate.episodes, 10) || 0,
-      rewatches: parseInt(rate.rewatches, 10) || 0
-    };
-    return anime;
-  }
-
-  function loadAccountRates(page, status, success, error) {
-    var account = readAccount();
-    if (!account.user || account.user.id == null) {
-      getShikimoriIdentity(function () {
-        loadAccountRates(page, status, success, error);
-      }, error);
-      return;
-    }
-    var query = 'page=' + encodeURIComponent(page) + '&limit=50';
-    if (status) query += '&status=' + encodeURIComponent(status);
-    authenticatedRequest({
-      url: 'https://shikimori.one/api/users/' + encodeURIComponent(account.user.id) + '/anime_rates?' + query,
-      method: 'GET',
-      dataType: 'json'
-    }, function (result) {
-      if (typeof success === 'function') success((Array.isArray(result) ? result : []).map(normalizeUserRateEntry));
-    }, error);
-  }
-
-  function findUserRate(anime, success, error) {
-    var account = readAccount();
-    if (!account.user || account.user.id == null) {
-      getShikimoriIdentity(function () {
-        findUserRate(anime, success, error);
-      }, error);
-      return;
-    }
-    authenticatedRequest({
-      url: 'https://shikimori.one/api/v2/user_rates?user_id=' + encodeURIComponent(account.user.id) +
-        '&target_type=Anime&target_id=' + encodeURIComponent(anime.id) + '&limit=1',
-      method: 'GET',
-      dataType: 'json'
-    }, function (rates) {
-      var match = Array.isArray(rates) ? rates.filter(function (item) {
-        return item && String(item.target_id) === String(anime.id);
-      })[0] : null;
-      var fallback = anime.__user_rate &&
-        String(anime.__user_rate.target_id) === String(anime.id) ? anime.__user_rate : null;
-      if (typeof success === 'function') success(match || fallback);
-    }, error);
-  }
-
-  function saveUserRate(anime, rate, changes, success, error) {
-    var account = readAccount();
-    if (!account.user || account.user.id == null) {
-      getShikimoriIdentity(function () {
-        saveUserRate(anime, rate, changes, success, error);
-      }, error);
-      return;
-    }
-    var isUpdate = rate && rate.id != null;
-    var url = isUpdate
-      ? 'https://shikimori.one/api/v2/user_rates/' + encodeURIComponent(rate.id)
-      : 'https://shikimori.one/api/v2/user_rates';
-    var payload = isUpdate ? { user_rate: changes } : {
-      user_rate: $.extend({
-        user_id: account.user.id,
-        target_id: anime.id,
-        target_type: 'Anime',
-        status: 'planned',
-        score: 0
-      }, changes || {})
-    };
-    authenticatedRequest({
-      url: url,
-      method: isUpdate ? 'PATCH' : 'POST',
-      contentType: 'application/json; charset=UTF-8',
-      processData: false,
-      dataType: 'json',
-      data: JSON.stringify(payload)
-    }, success, error);
-  }
-
-  function deleteUserRate(rate, success, error) {
-    if (!rate || rate.id == null) {
-      if (typeof error === 'function') error({ message: 'Запись Shikimori не найдена' });
-      return;
-    }
-    authenticatedRequest({
-      url: 'https://shikimori.one/api/v2/user_rates/' + encodeURIComponent(rate.id),
-      method: 'DELETE',
-      dataType: 'text'
-    }, success, error);
-  }
-
-  function userRateStatusTitle(status) {
-    var names = {
-      planned: 'Запланировано',
-      watching: 'Смотрю',
-      rewatching: 'Пересматриваю',
-      completed: 'Просмотрено',
-      on_hold: 'Отложено',
-      dropped: 'Брошено'
-    };
-    return names[status] || 'Не задано';
-  }
 
   function main(params, oncomplite, onerror, network) {
     var query = [
@@ -1099,12 +468,6 @@
               class: 'card__type LMEShikimori__kind',
               text: kindTitle
             }));
-            if (data.__user_rate) {
-              view.append(Lampa.Template.elem('div', {
-                class: 'LMEShikimori__user-status',
-                text: userRateStatusTitle(data.__user_rate.status)
-              }));
-            }
           }
         },
         onFocus: function () {
@@ -1114,19 +477,6 @@
           if (typeof handlers.enter === 'function') handlers.enter(this, data);
         }
       });
-      if (item.menu_list && typeof handlers.long === 'function') {
-        item.menu_list.push({
-          title: 'Shikimori',
-          menu: function () {
-            return [{
-              title: 'Изменить запись в Shikimori',
-              onSelect: function () {
-                handlers.long(item, data);
-              }
-            }];
-          }
-        });
-      }
       item.create();
       element = item.render(true);
       }
@@ -1135,7 +485,6 @@
       element = Lampa.Template.get('LMEShikimori-Card', {
         img: escapeHtml(poster),
         type: escapeHtml(kindTitle),
-        status: escapeHtml(data.__user_rate ? userRateStatusTitle(data.__user_rate.status) : ''),
         rate: escapeHtml(data.score == null ? '—' : data.score),
         title: escapeHtml(title || 'Без названия'),
         season: escapeHtml(data.season || year || '')
@@ -1144,8 +493,6 @@
         if (typeof handlers.focus === 'function') handlers.focus(null, data);
       }).on('hover:enter', function () {
         if (typeof handlers.enter === 'function') handlers.enter(null, data);
-      }).on('hover:long', function () {
-        if (typeof handlers.long === 'function') handlers.long(null, data);
       });
     }
 
@@ -1168,19 +515,18 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filters</div><div class='LMEShikimori__account simple-button simple-button--filter selector'>Shikimori account</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filters</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var inited = false;
     var loading = false;
     var hasMore = true;
     var currentPage = 0;
-    var pageSize = object.accountList ? 50 : 36;
+    var pageSize = 36;
     var headerReady = false;
     var last = null;
     var self = this;
     var filterDefaults = Lampa.Storage.get(FILTERS_STORAGE_KEY, {}) || {};
     var filterState = $.extend({}, filterDefaults, object);
-    var accountList = !!object.accountList;
 
     function getSeason(date) {
       var month = date.getMonth();
@@ -1494,46 +840,6 @@
       });
     }
 
-    function accountMenu() {
-      var account = readAccount();
-      var user = account.user || {};
-      var items = [];
-      if (accountIsConnected()) {
-        items.push({ title: 'Мой список аниме', subtitle: escapeHtml(user.nickname || user.name || 'Shikimori'), openAccountList: true });
-        items.push({ title: 'Смотрю', subtitle: 'watching', accountStatus: 'watching' });
-        items.push({ title: 'Запланировано', subtitle: 'planned', accountStatus: 'planned' });
-        items.push({ title: 'Просмотрено', subtitle: 'completed', accountStatus: 'completed' });
-        items.push({ title: 'Отложено', subtitle: 'on_hold', accountStatus: 'on_hold' });
-        items.push({ title: 'Брошено', subtitle: 'dropped', accountStatus: 'dropped' });
-        items.push({ title: 'Пересматриваю', subtitle: 'rewatching', accountStatus: 'rewatching' });
-        items.push({ title: 'Обновить профиль и токен', refreshAccount: true });
-        items.push({ title: 'Отключить аккаунт', disconnectAccount: true });
-      } else {
-        items.push({ title: 'Подключить аккаунт Shikimori', connectAccount: true });
-      }
-      items.push({ title: 'Настроить OAuth-приложение', configureOAuth: true });
-      Lampa.Select.show({
-        title: accountIsConnected() ? 'Shikimori — ' + escapeHtml(user.nickname || user.name || 'аккаунт') : 'Аккаунт Shikimori',
-        items: items,
-        onBack: function () { Lampa.Controller.toggle('content'); },
-        onSelect: function (chosen) {
-          if (chosen.openAccountList) {
-            Lampa.Activity.push({ url: '', title: 'Мой список Shikimori', component: 'LMEShikimori', page: 1, accountList: true });
-          } else if (chosen.accountStatus) {
-            Lampa.Activity.push({ url: '', title: 'Shikimori: ' + userRateStatusTitle(chosen.accountStatus), component: 'LMEShikimori', page: 1, accountList: true, accountStatus: chosen.accountStatus });
-          } else if (chosen.connectAccount) connectShikimori();
-          else if (chosen.configureOAuth) editOAuthSettings();
-          else if (chosen.refreshAccount) {
-            getShikimoriIdentity(function (profile) {
-              Lampa.Noty.show('Профиль обновлён: ' + escapeHtml(profile.nickname || profile.name || profile.id));
-            }, function (error) {
-              Lampa.Noty.show('Не удалось обновить профиль: ' + escapeHtml(error && error.message || 'ошибка'));
-            });
-          } else if (chosen.disconnectAccount) disconnectShikimori();
-        }
-      });
-    }
-
     function reloadCurrent() {
       if (!inited) return;
       network.clear();
@@ -1547,156 +853,6 @@
       loading = false;
       self.activity.loader(true);
       loadPage(1);
-    }
-
-    function replaceCatalogueCard(anime, index) {
-      if (index < 0 || index >= items.length) return;
-      var previous = items[index];
-      var previousElement = previous && previous.render ? previous.render() : null;
-      var replacement = new Card(anime, userLang, {
-        focus: function (instance) {
-          last = instance && instance.render ? instance.render() : replacement.render();
-          var focusedIndex = items.indexOf(replacement);
-          if (focusedIndex !== -1) scroll.update(replacement.render(), true);
-        },
-        long: function () { openRateEditor(anime); },
-        enter: function () { lookupNetwork.clear(); API.search(anime, lookupNetwork); }
-      });
-      replacement.dataId = String(anime.id);
-      var nextElement = replacement.render();
-      if (previousElement && previousElement.parentNode && typeof previousElement.parentNode.replaceChild === 'function') {
-        previousElement.parentNode.replaceChild(nextElement, previousElement);
-      } else if (previousElement && typeof previousElement.replaceWith === 'function') {
-        previousElement.replaceWith(nextElement);
-      } else if (body.children && typeof body.children === 'function') {
-        var child = body.children().eq(index);
-        if (child && typeof child.replaceWith === 'function') child.replaceWith(nextElement);
-      }
-      if (previous && typeof previous.destroy === 'function') previous.destroy();
-      items[index] = replacement;
-      if (last && previousElement && last[0] === previousElement[0]) last = nextElement;
-      scroll.update(nextElement, true);
-    }
-
-    var rateMutationPending = false;
-
-    function saveOrUpdateRate(anime, rate, changes) {
-      if (rateMutationPending) return;
-      rateMutationPending = true;
-      saveUserRate(anime, rate, changes, function (result) {
-        rateMutationPending = false;
-        var normalized = result && result.user_rate ? result.user_rate : result;
-        anime.__user_rate = {
-          id: normalized && normalized.id || rate && rate.id || null,
-          status: normalized && normalized.status || changes.status || rate && rate.status || 'planned',
-          score: normalized && normalized.score != null ? normalized.score : (changes.score != null ? changes.score : rate && rate.score || 0),
-          episodes: normalized && normalized.episodes != null ? normalized.episodes : (changes.episodes != null ? changes.episodes : rate && rate.episodes || 0)
-        };
-        Lampa.Noty.show('Список Shikimori обновлён');
-        if (accountList) reloadCurrent();
-        else {
-          var currentIndex = -1;
-          for (var i = 0; i < items.length; i++) {
-            if (items[i].dataId === String(anime.id)) {
-              currentIndex = i;
-              break;
-            }
-          }
-          if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
-        }
-      }, function (xhr, status, message) {
-        rateMutationPending = false;
-        var apiMessage = xhr && xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message);
-        Lampa.Noty.show('Не удалось обновить список Shikimori: ' + escapeHtml(apiMessage || message || status || 'ошибка API') +
-          '. Проверьте scope user_rates в OAuth-приложении.');
-      });
-    }
-
-    function openRateEditor(anime) {
-      if (!accountIsConnected()) {
-        Lampa.Noty.show('Сначала подключите аккаунт Shikimori в меню аккаунта');
-        return;
-      }
-      findUserRate(anime, function (rate) {
-        var statuses = [
-          { title: 'Запланировано', code: 'planned' },
-          { title: 'Смотрю', code: 'watching' },
-          { title: 'Пересматриваю', code: 'rewatching' },
-          { title: 'Просмотрено', code: 'completed' },
-          { title: 'Отложено', code: 'on_hold' },
-          { title: 'Брошено', code: 'dropped' }
-        ];
-        var menu = [
-          { title: 'Статус просмотра', statusMenu: true },
-          { title: 'Оценка: ' + (rate && rate.score ? rate.score : 'нет'), scoreMenu: true },
-          { title: 'Эпизоды просмотрены: ' + (rate && rate.episodes || 0), episodesMenu: true }
-        ];
-        if (rate && rate.id) menu.push({ title: 'Удалить из списка Shikimori', removeRate: true });
-        Lampa.Select.show({
-          title: 'Мой список: ' + escapeHtml(anime.russian || anime.name || 'аниме'),
-          items: menu,
-          onBack: function () { Lampa.Controller.toggle('content'); },
-          onSelect: function (chosen) {
-            if (chosen.statusMenu) {
-              Lampa.Select.show({
-                title: 'Статус просмотра',
-                items: statuses,
-                onBack: function () { openRateEditor(anime); },
-                onSelect: function (selected) {
-                  saveOrUpdateRate(anime, rate, { status: selected.code });
-                }
-              });
-            } else if (chosen.scoreMenu) {
-              var scores = [{ title: 'Без оценки', code: 0 }];
-              for (var score = 1; score <= 10; score++) scores.push({ title: String(score), code: score });
-              Lampa.Select.show({
-                title: 'Оценка Shikimori',
-                items: scores,
-                onBack: function () { openRateEditor(anime); },
-                onSelect: function (selected) { saveOrUpdateRate(anime, rate, { score: selected.code }); }
-              });
-            } else if (chosen.episodesMenu) {
-              Lampa.Input.edit({
-                title: 'Количество просмотренных эпизодов',
-                value: String(rate && rate.episodes || 0),
-                free: true,
-                nosave: true
-              }, function (value) {
-                var episodes = parseInt(value, 10);
-                if (!isFinite(episodes) || episodes < 0) {
-                  Lampa.Noty.show('Введите число 0 или больше');
-                  return;
-                }
-                saveOrUpdateRate(anime, rate, { episodes: episodes });
-              });
-            } else if (chosen.removeRate) {
-              if (rateMutationPending) return;
-              rateMutationPending = true;
-              deleteUserRate(rate, function () {
-                rateMutationPending = false;
-                anime.__user_rate = null;
-                Lampa.Noty.show('Аниме удалено из списка Shikimori');
-                if (accountList) reloadCurrent();
-                else {
-                  var currentIndex = -1;
-          for (var i = 0; i < items.length; i++) {
-            if (items[i].dataId === String(anime.id)) {
-              currentIndex = i;
-              break;
-            }
-          }
-                  if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
-                }
-              }, function (xhr, status, message) {
-                rateMutationPending = false;
-                Lampa.Noty.show('Не удалось удалить запись: ' + escapeHtml(message || status || 'ошибка API'));
-              });
-            }
-          }
-        });
-      }, function (xhr, status, message) {
-        Lampa.Noty.show('Не удалось прочитать запись Shikimori: ' + escapeHtml(message || status || 'ошибка API'));
-      });
     }
 
     this.create = function () {
@@ -1721,14 +877,9 @@
       html.append(scroll.render(true));
       loadGenres();
 
-      if (accountList && !accountIsConnected()) {
-        self.empty();
-        Lampa.Noty.show('Для просмотра списка подключите аккаунт Shikimori');
-      } else {
-        var firstPage = Math.max(1, parseInt(object.page, 10) || 1);
-        currentPage = firstPage - 1;
-        loadPage(firstPage);
-      }
+      var firstPage = Math.max(1, parseInt(object.page, 10) || 1);
+      currentPage = firstPage - 1;
+      loadPage(firstPage);
       return this.render();
     };
 
@@ -1762,8 +913,7 @@
         Lampa.Noty.show('Не удалось загрузить ' + (page > 1 ? 'следующую страницу' : 'каталог') + ': ' + escapeHtml(message));
       }
 
-      if (accountList) loadAccountRates(page, object.accountStatus || '', complete, failed);
-      else API.main(params, complete, failed, network);
+      API.main(params, complete, failed, network);
     }
 
     this.headeraction = function () {
@@ -1771,7 +921,6 @@
       headerReady = true;
 
       head.find('.LMEShikimori__search').off('hover:enter').on('hover:enter', mainFilterMenu);
-      head.find('.LMEShikimori__account').off('hover:enter').on('hover:enter', accountMenu);
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
       });
@@ -1803,9 +952,6 @@
             lookupNetwork.clear();
             API.search(anime, lookupNetwork);
           },
-          long: function () {
-            openRateEditor(anime);
-          }
         });
         card.dataId = String(anime.id);
         body.append(card.render());
@@ -1855,10 +1001,6 @@
       loading = false;
       network.clear();
       lookupNetwork.clear();
-      authGeneration += 1;
-      authNetwork.clear();
-      refreshWaiters = [];
-      refreshInFlight = false;
       head.off();
       items.forEach(function (item) { item.destroy(); });
       scroll.destroy();
@@ -1980,22 +1122,23 @@
   }
   function startPlugin() {
     window.plugin_shikimori_ready = true;
+    // Remove credentials and tokens left by older OAuth-enabled plugin versions.
+    Lampa.Storage.set('lme_shikimori_account_v1', {});
+    Lampa.Storage.set('lme_shikimori_oauth_state', '');
     var manifest = {
       type: "other",
       version: "0.3",
       name: "LME Shikimori",
-      description: "Shikimori catalogue, native Lampa cards, filters and OAuth account sync",
+      description: "Shikimori catalogue, native Lampa cards and filters",
       component: "LMEShikimori"
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__user-status{position:absolute;left:.5em;bottom:.5em;z-index:3;padding:.3em .45em;border-radius:.25em;background:rgba(0,0,0,.78);color:#fff;font-size:.85em}</style>");
-    Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div><div class=\"LMEShikimori__user-status\">{status}</div></div><div class=\"card__title\">{title}</div></div>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}</style>");
+    Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
     Component();
-    // If the OAuth redirect points back to this Lampa origin, finish sign-in automatically.
-    handleOAuthCallbackFromLocation();
     //Set menu
     $('body').append(Lampa.Template.get('LMEShikimoriStyle', {}, true));
     if (window.appready) add();
