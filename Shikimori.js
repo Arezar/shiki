@@ -165,6 +165,7 @@
   var authGeneration = 0;
 
   function requestOAuthToken(payload, success, error) {
+    var generation = authGeneration;
     authNetwork.request({
       url: 'https://shikimori.io/oauth/token',
       method: 'POST',
@@ -173,8 +174,12 @@
       dataType: 'json',
       timeout: 20000,
       data: encodeForm(payload),
-      success: success,
-      error: error
+      success: function (response) {
+        if (generation === authGeneration && typeof success === 'function') success(response);
+      },
+      error: function (xhr, status, message) {
+        if (generation === authGeneration && typeof error === 'function') error(xhr, status, message);
+      }
     });
   }
 
