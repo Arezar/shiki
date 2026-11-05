@@ -183,14 +183,31 @@
     return account;
   }
 
+  var refreshInFlight = false;
+  var refreshWaiters = [];
+
+  function settleRefresh(error, token) {
+    var waiters = refreshWaiters.slice();
+    refreshWaiters = [];
+    refreshInFlight = false;
+    waiters.forEach(function (waiter) {
+      var callback = error ? waiter.error : waiter.success;
+      if (typeof callback === 'function') callback(error || token);
+    });
+  }
+
   function refreshAccessToken(success, error) {
+    refreshWaiters.push({ success: success, error: error });
+    if (refreshInFlight) return;
+
     var account = readAccount();
     var config = readOAuthConfig();
     if (!account.refresh_token || !config.client_id || !config.client_secret) {
-      if (typeof error === 'function') error({ message: 'Нет refresh token. Подключите аккаунт Shikimori заново.' });
+      settleRefresh({ message: 'Нет refresh token. Подключите аккаунт Shikimori заново.' });
       return;
     }
 
+    refreshInFlight = true;
     requestOAuthToken({
       grant_type: 'refresh_token',
       client_id: config.client_id,
@@ -198,12 +215,14 @@
       refresh_token: account.refresh_token
     }, function (response) {
       try {
-        saveTokenResponse(response, account);
-        if (typeof success === 'function') success(response.access_token);
+        var updated = saveTokenResponse(response, account);
+        settleRefresh(null, updated.access_token);
       } catch (exception) {
-        if (typeof error === 'function') error({ message: exception.message });
+        settleRefresh({ message: exception.message });
       }
-    }, error);
+    }, function (xhr, status, message) {
+      settleRefresh(xhr || { message: message || status || 'Не удалось обновить токен' });
+    });
   }
 
   function ensureAccessToken(success, error) {
@@ -275,14 +294,18 @@
     if (question !== -1) query = query.slice(question + 1);
     var hash = query.indexOf('#');
     if (hash !== -1) query = query.slice(0, hash);
-    query.split('&').forEach(function (part) {
-      if (!part) return;
-      var pair = part.split('=');
-      var key = decodeURIComponent(pair.shift() || '');
-      var val = decodeURIComponent(pair.join('=') || '');
-      if (key === 'code') result.code = val;
-      if (key === 'state') result.state = val;
-    });
+    try {
+      query.split('&').forEach(function (part) {
+        if (!part) return;
+        var pair = part.split('=');
+        var key = decodeURIComponent(pair.shift() || '');
+        var val = decodeURIComponent(pair.join('=') || '');
+        if (key === 'code') result.code = val;
+        if (key === 'state') result.state = val;
+      });
+    } catch (exception) {
+      return { code: '', state: '' };
+    }
     if (!result.code && input.indexOf('://') === -1 && input.indexOf('?') === -1 && input.indexOf('=') === -1) {
       result.code = input;
     }
@@ -359,10 +382,12 @@
     }, function (value) {
       var parsed = parseOAuthRedirect(value);
       var expectedState = Lampa.Storage.get(OAUTH_STATE_KEY, '');
-      if (!parsed.code || !parsed.state || parsed.state !== expectedState) {
+      if (!parsed.code || !parsed.state || !expectedState || parsed.state !== expectedState) {
         Lampa.Noty.show('Код авторизации или state не совпадает. Повторите подключение и вставьте полный URL.');
         return;
       }
+      // OAuth state is single-use: consume it before exchanging the authorization code.
+      Lampa.Storage.set(OAUTH_STATE_KEY, '');
 
       requestOAuthToken({
         grant_type: 'authorization_code',
@@ -456,7 +481,7 @@
       method: 'GET',
       dataType: 'json'
     }, function (rates) {
-      var rate = Array.isArray(rates) && rates.length ? rates[0] : anime.__user_rate || null;
+      var rate = Array.isArray(rates) && rates.length ? rates[0] : null;
       if (typeof success === 'function') success(rate);
     }, error);
   }
