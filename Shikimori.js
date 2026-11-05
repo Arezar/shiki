@@ -7,7 +7,7 @@
  * - Smart TMDB lookup (original / English / Russian titles, season-suffix fallback,
  *   Animation/JP/year scoring)
  * - Card context-menu entry & optional full-card button with SVG icon
- * - ES5-compatible for legacy Smart TV WebViews (Tizen, WebOS, Orsay, Android TV)
+ * - Optimized for modern Smart TV browsers, targeting current LG webOS
  */
 (function () {
     'use strict'
@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.4'
+    var VERSION = '1.5.5'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -207,7 +207,7 @@
     }
 
     function seasonTitle(value) {
-        var match = /^(winter|spring|summer|fall)_(\\d{4})$/.exec(String(value || ''))
+        var match = /^(winter|spring|summer|fall)_(\d{4})$/.exec(String(value || ''))
         if (!match) return String(value || '')
         var names = isRu() ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' } : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' }
         return names[match[1]] + ' ' + match[2]
@@ -494,7 +494,7 @@
             '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
             '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
             '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
-            '.shiki-card__poster img{display:block;width:100%;height:14em;max-width:100%;object-fit:cover;border-radius:.22em;background:rgba(255,255,255,.07)}',
+            '.shiki-card__poster img{display:block;width:100%;height:auto;aspect-ratio:2/3;max-width:100%;object-fit:contain;border-radius:.22em;background:rgba(255,255,255,.07)}',
             '.shiki-card__body{display:block;flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box;padding:.55em .2em .25em;overflow:hidden}',
             '.shiki-card__name{display:block;max-width:100%;font-size:1.02em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
             '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.25em 0 0;font-size:.78em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
