@@ -570,8 +570,12 @@
       method: 'GET',
       dataType: 'json'
     }, function (rates) {
-      var rate = Array.isArray(rates) && rates.length ? rates[0] : null;
-      if (typeof success === 'function') success(rate);
+      var match = Array.isArray(rates) ? rates.filter(function (item) {
+        return item && String(item.target_id) === String(anime.id);
+      })[0] : null;
+      var fallback = anime.__user_rate &&
+        String(anime.__user_rate.target_id) === String(anime.id) ? anime.__user_rate : null;
+      if (typeof success === 'function') success(match || fallback);
     }, error);
   }
 
@@ -1435,6 +1439,11 @@
       var previous = items[index];
       var previousElement = previous && previous.render ? previous.render() : null;
       var replacement = new Card(anime, userLang, {
+        focus: function (instance) {
+          last = instance && instance.render ? instance.render() : replacement.render();
+          var focusedIndex = items.indexOf(replacement);
+          if (focusedIndex !== -1) scroll.update(replacement.render(), true);
+        },
         long: function () { openRateEditor(anime); },
         enter: function () { lookupNetwork.clear(); API.search(anime, lookupNetwork); }
       });
@@ -1450,7 +1459,7 @@
       }
       if (previous && typeof previous.destroy === 'function') previous.destroy();
       items[index] = replacement;
-      if (last === previousElement) last = nextElement;
+      if (last && previousElement && last[0] === previousElement[0]) last = nextElement;
       scroll.update(nextElement, true);
     }
 
@@ -1471,7 +1480,13 @@
         Lampa.Noty.show('Список Shikimori обновлён');
         if (accountList) reloadCurrent();
         else {
-          var currentIndex = items.findIndex(function (item) { return item.dataId === String(anime.id); });
+          var currentIndex = -1;
+          for (var i = 0; i < items.length; i++) {
+            if (items[i].dataId === String(anime.id)) {
+              currentIndex = i;
+              break;
+            }
+          }
           if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
         }
       }, function (xhr, status, message) {
@@ -1548,7 +1563,13 @@
                 Lampa.Noty.show('Аниме удалено из списка Shikimori');
                 if (accountList) reloadCurrent();
                 else {
-                  var currentIndex = items.findIndex(function (item) { return item.dataId === String(anime.id); });
+                  var currentIndex = -1;
+          for (var i = 0; i < items.length; i++) {
+            if (items[i].dataId === String(anime.id)) {
+              currentIndex = i;
+              break;
+            }
+          }
                   if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
                 }
               }, function (xhr, status, message) {
