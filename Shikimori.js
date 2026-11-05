@@ -939,10 +939,10 @@
       return this.render();
     };
 
-    function loadPage(page) {
+    function loadPage(page, isRetry) {
       if (!inited || loading || !hasMore) return;
       loading = true;
-      showLoadingStatus(page, !!arguments[1]);
+      showLoadingStatus(page, !!isRetry);
       var filterParams = buildFilterParams();
       var params = $.extend({}, filterParams, object, { page: page });
 
