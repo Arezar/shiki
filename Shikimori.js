@@ -293,7 +293,7 @@
       var menu = candidates.slice(0, 10).map(function (item) {
         var title = item.title || item.name || item.original_title || item.original_name || 'Без названия';
         return {
-          title: '[' + item.media_type.toUpperCase() + '] ' + title,
+          title: '[' + item.media_type.toUpperCase() + '] ' + escapeHtml(title),
           card: item
         };
       });
@@ -558,9 +558,9 @@
 
         if (page === 1) {
           self.empty();
-          Lampa.Noty.show('Не удалось загрузить каталог: ' + message);
+          Lampa.Noty.show('Не удалось загрузить каталог: ' + escapeHtml(message));
         } else {
-          Lampa.Noty.show('Не удалось загрузить следующую страницу: ' + message);
+          Lampa.Noty.show('Не удалось загрузить следующую страницу: ' + escapeHtml(message));
         }
       }, network);
     }
