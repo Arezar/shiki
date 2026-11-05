@@ -816,9 +816,7 @@
 
   var API = {
     main: main,
-    search: search,
-    getWatchlist: getWatchlist,
-    toggleWatchlist: toggleWatchlist
+    search: search
   };
 
 
