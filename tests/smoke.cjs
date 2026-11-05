@@ -15,6 +15,7 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
+  '    search: search,',
   '  };',
   startMarker
 ].join('\n');
@@ -355,6 +356,39 @@ function testEmptyRestoredPage() {
   component.destroy();
 }
 
+function testCatalogueRetryAfterInitialFailure() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
+  const firstRequest = graphqlRequests()[0];
+  assert.ok(firstRequest, 'initial catalogue request should start');
+  firstRequest.xhr.reject(503, { message: 'Service unavailable' });
+
+  const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry') !== -1);
+  assert.ok(retry && retry.handlers['hover:enter'], 'failed initial load should expose a remote-friendly retry control');
+  retry.handlers['hover:enter']();
+  assert.equal(graphqlRequests().length, 2, 'retry should issue another catalogue request');
+  const retryRequest = graphqlRequests()[1];
+  assert.equal(JSON.parse(retryRequest.options.data).variables.page, 1, 'retry should request the failed page');
+  assert.equal(retry.removed, true, 'retry control should disappear once retry starts');
+
+  retryRequest.xhr.resolve({ data: { animes: [{ id: 9001, name: 'Retry success' }] } });
+  component.destroy();
+}
+
+function testTmdbSearchExcludesAdultResults() {
+  ajaxCalls.length = 0;
+  const manager = new api.NetworkManager(15000);
+  api.search({ id: 901, name: 'Example anime' }, manager);
+  const request = ajaxCalls.find(item => item.options.url.indexOf('https://api.themoviedb.org/3/search/multi') === 0);
+  assert.ok(request, 'TMDB fallback search should be issued');
+  assert.doesNotMatch(request.options.url, /include_adult=true/i, 'adult TMDB results must not be explicitly enabled');
+  manager.clear();
+}
+
 function testNoAccountAuthorizationRemains() {
   assert.equal(Object.keys(storage.lme_shikimori_account_v1).length, 0, 'legacy OAuth credentials and tokens must be cleared');
   assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
@@ -392,7 +426,9 @@ testRestoredFiltersAreStableAcrossPages();
 testResetFiltersClearsCheckboxState();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
+testCatalogueRetryAfterInitialFailure();
+testTmdbSearchExcludesAdultResults();
 testLegacyCardFallbackSafety();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (9 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
