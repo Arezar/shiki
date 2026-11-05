@@ -1205,17 +1205,16 @@
     }
 
     function buildFilterParams() {
+      // Query parameters are derived from the canonical state, never from asynchronously
+      // populated Select items. This keeps page 1 and every later page identical.
       var params = {};
-      var genres = filters.kind.items.filter(function (item) { return item.selected; }).map(function (item) { return String(item.id); });
-      if (genres.length) params.genre = genres.join(',');
-      if (filterState.search) params.search = String(filterState.search);
-      ['type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
-        var chosen = filters[key].items.filter(function (item) { return item.selected; })[0];
-        if (chosen && chosen.code !== '') {
-          var apiKey = key === 'type' ? 'kind' : key;
-          params[apiKey] = chosen.code;
-        }
+      if (filterState.genre) params.genre = String(filterState.genre);
+      if (filterState.search) params.search = String(filterState.search).trim();
+      if (filterState.kind) params.kind = String(filterState.kind);
+      ['status', 'score', 'rating', 'duration', 'seasons'].forEach(function (key) {
+        if (filterState[key] != null && filterState[key] !== '') params[key] = String(filterState[key]);
       });
+      params.sort = filterState.sort || 'ranked';
       return params;
     }
 
@@ -1233,7 +1232,9 @@
         items: filter.items,
         onBack: onReturn,
         onSelect: function (chosen) {
-          selectedSingle(filter, chosen && chosen.code);
+          var value = chosen && chosen.code;
+          selectedSingle(filter, value);
+          filterState[key === 'type' ? 'kind' : key] = value || '';
           onReturn();
         }
       });
@@ -1248,6 +1249,8 @@
         onBack: onReturn,
         onCheck: function (chosen) {
           chosen.selected = !!chosen.checked;
+          filterState.genre = filters.kind.items.filter(function (item) { return item.selected; })
+            .map(function (item) { return String(item.id); }).join(',');
           selectedTitle(filters.kind);
         }
       });
@@ -1287,6 +1290,8 @@
         });
       });
       filterState.sort = 'ranked';
+      filterState.genre = '';
+      filterState.search = '';
       selectedSingle(filters.sort, 'ranked');
       Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: 'ranked' });
       mainFilterMenu();
