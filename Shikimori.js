@@ -498,6 +498,8 @@
             '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8em;width:100%;max-width:100%;box-sizing:border-box;align-items:stretch}',
+            '.shikimori-full-rating{display:flex;align-items:center;gap:.55em;margin-top:.65em;color:rgba(255,255,255,.68);font-size:.95em;line-height:1.4}',
+            '.shikimori-full-rating span{color:#f2c477;font-weight:700}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
             '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
             '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
@@ -2047,15 +2049,10 @@
     var shikiRatingQueue = []
     var shikiRatingBusy = false
 
-    function isJapaneseAnimeCard(data) {
-        if (!data || typeof data !== 'object') return false
-        var language = String(data.original_language || '').toLowerCase()
-        var countries = Array.isArray(data.origin_country) ? data.origin_country : []
-        return language === 'ja' || countries.indexOf('JP') >= 0
-    }
-
-    function lampaCardTitles(data) {
-        return dedupeQueries([data.original_name, data.original_title, data.name, data.title])
+    // Use the same anime detection as the full-card button: TMDB often omits
+    // Japanese language/country metadata but still supplies Animation genre.
+    function isShikiRatingCandidate(data) {
+        return isCardLikelyAnime(data)
     }
 
     function findExactShikiAnime(results, titles, year) {
@@ -2097,22 +2094,18 @@
     }
 
     function attachShikiRating(job, result) {
-        if (!job || !result || !job.item) return
-        var html = job.item.html
-        if (!html || typeof html.find !== 'function') {
+        if (!job || !result || !job.render) return
+        var root = $(job.render)
+        var info = root.find('.info__rate').first()
+        if (!info.length) {
             job.attachTries = (job.attachTries || 0) + 1
             if (job.attachTries <= 8) setTimeout(function () { attachShikiRating(job, result) }, 250)
             return
         }
-        var view = html.find('.card__view').first()
-        if (!view.length) {
-            job.attachTries = (job.attachTries || 0) + 1
-            if (job.attachTries <= 8) setTimeout(function () { attachShikiRating(job, result) }, 250)
-            return
-        }
-        if (view.find('.shikimori-card-rating').length) return
-        view.append($('<div class="shikimori-card-rating" title="Shikimori">SHIKI ' + esc(result.score) + '</div>'))
-        try { html.addClass('card--shikimori-rated') } catch (e) {}
+        if (root.find('.shikimori-full-rating').length) return
+        info.after(
+            $('<div class="shikimori-full-rating">Shikimori <span>★ ' + esc(result.score) + '</span></div>')
+        )
     }
 
     function processShikiRatingQueue() {
@@ -2152,22 +2145,30 @@
         tryTitle()
     }
 
-    function queueShikiRating(item) {
-        if (!item || !item.data || !isJapaneseAnimeCard(item.data) || item._shikiRatingQueued) return
-        var titles = lampaCardTitles(item.data)
+    function queueShikiRating(data, render) {
+        if (!data || !render || !isShikiRatingCandidate(data)) return
+        var root = $(render)
+        if (root.find('.shikimori-full-rating').length || root.data('shikiRatingQueued')) return
+        var titles = lampaCardTitles(data)
         if (!titles.length) return
-        item._shikiRatingQueued = true
-        var date = item.data.first_air_date || item.data.release_date || ''
+        root.data('shikiRatingQueued', true)
+        var date = data.first_air_date || data.release_date || data.last_air_date || ''
         var year = date ? parseInt(String(date).substr(0, 4), 10) : 0
-        shikiRatingQueue.push({ item: item, titles: titles, year: year })
+        shikiRatingQueue.push({ render: render, titles: titles, year: year })
         processShikiRatingQueue()
     }
 
+    // Follow the same lifecycle as the working Kinopoisk/IMDb plugin:
+    // wait until Lampa has completed rendering the full card, then append the rating.
     function installLampaCardRatings() {
         if (!Lampa.Listener || typeof Lampa.Listener.follow !== 'function') return
-        Lampa.Listener.follow('line', function (event) {
-            if (!event || event.type !== 'append' || !Array.isArray(event.items)) return
-            event.items.forEach(function (item) { queueShikiRating(item) })
+        Lampa.Listener.follow('full', function (event) {
+            if (!event || event.type !== 'complite' || !event.data || !event.data.movie) return
+            var render = event.object && event.object.activity &&
+                typeof event.object.activity.render === 'function'
+                ? event.object.activity.render()
+                : null
+            if (render) queueShikiRating(event.data.movie, render)
         })
     }
 
