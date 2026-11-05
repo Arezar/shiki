@@ -7,7 +7,7 @@
  * - Smart TMDB lookup (original / English / Russian titles, season-suffix fallback,
  *   Animation/JP/year scoring)
  * - Card context-menu entry & optional full-card button with SVG icon
- * - ES5-compatible for legacy Smart TV WebViews (Tizen, WebOS, Orsay, Android TV)
+ * - Optimized for modern Smart TV browsers, targeting current LG webOS
  */
 (function () {
     'use strict'
@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.1'
+    var VERSION = '1.5.5'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -31,15 +31,8 @@
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect width="100" height="150" fill="#24262f"/><circle cx="50" cy="75" r="18" fill="none" stroke="#3a3f4e" stroke-width="3"/></svg>'
     )
 
-    // Precompile Unicode property regex at runtime so ES5 parsers never fail at parse time;
-    // FALLBACK_NORM_RE covers Latin/Extended, Cyrillic, Hiragana, Katakana, Kanji/CJK, Hangul & Fullwidth in pure ES5
-    var UNICODE_NORM_RE = null
-    try {
-        UNICODE_NORM_RE = new RegExp('[^\\p{L}\\p{N}]+', 'gu')
-    } catch (e) {
-        UNICODE_NORM_RE = null
-    }
-    var FALLBACK_NORM_RE = /[^a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0400-\u052f\u1100-\u11ff\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]+/gi
+    // Modern WebView target (LG webOS): use full Unicode letter/number support.
+    var UNICODE_NORM_RE = /[^\p{L}\p{N}]+/gu;
 
     // ---------- in-memory TTL cache ----------
     var cacheStore = {}
@@ -115,7 +108,8 @@
         shikimori_filters:      { ru: 'Фильтры', en: 'Filters', uk: 'Фільтри' },
         shikimori_filter_kind:  { ru: 'Тип', en: 'Type', uk: 'Тип' },
         shikimori_filter_status:{ ru: 'Статус', en: 'Status', uk: 'Статус' },
-        shikimori_filter_year:  { ru: 'Год', en: 'Year', uk: 'Рік' },
+        shikimori_filter_year:  { ru: 'Год / сезон', en: 'Year / season', uk: 'Рік / сезон' },
+        shikimori_filter_genre: { ru: 'Жанр', en: 'Genre', uk: 'Жанр' },
         shikimori_filter_score: { ru: 'Минимальная оценка', en: 'Minimum score', uk: 'Мінімальна оцінка' },
         shikimori_filter_duration:{ ru: 'Длительность', en: 'Duration', uk: 'Тривалість' },
         shikimori_filter_rating:{ ru: 'Возрастной рейтинг', en: 'Age rating', uk: 'Віковий рейтинг' },
@@ -176,6 +170,9 @@
 
     var KIND = {
         tv: 'TV',
+        tv_13: 'TV · 13',
+        tv_24: 'TV · 24',
+        tv_48: 'TV · 48',
         tv_special: 'TV Special',
         special: 'Special',
         movie: 'Movie',
@@ -200,6 +197,42 @@
             paused: tr('shikimori_paused')
         }
         return map[s] || s || ''
+    }
+
+    function genreTitle(id) {
+        var ru = ['','Экшен','Приключения','Машины','Комедия','Безумие','Демоны','Детектив','Драма','Этти','Фэнтези','Игры','','Исторический','Ужасы','Детское','Магия','Боевые искусства','Меха','Музыка','Пародия','Самураи','Романтика','Школа','Фантастика','Сёдзё','Сёдзё-ай','Сёнэн','Сёнэн-ай','Космос','Спорт','Сверхспособности','Вампиры','Гарем','Повседневность','Сверхъестественное','Военное','Полиция','Психологическое','Триллер','Сэйнэн','Дзёсэй']
+        var en = ['','Action','Adventure','Cars','Comedy','Dementia','Demons','Mystery','Drama','Ecchi','Fantasy','Game','','Historical','Horror','Kids','Magic','Martial Arts','Mecha','Music','Parody','Samurai','Romance','School','Sci-Fi','Shoujo','Shoujo Ai','Shounen','Shounen Ai','Space','Sports','Super Power','Vampire','Harem','Slice of Life','Supernatural','Military','Police','Psychological','Thriller','Seinen','Josei']
+        var n = parseInt(id, 10)
+        return (isRu() ? ru[n] : en[n]) || String(id)
+    }
+
+    function seasonTitle(value) {
+        var match = /^(winter|spring|summer|fall)_(\d{4})$/.exec(String(value || ''))
+        if (!match) return String(value || '')
+        var names = isRu() ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' } : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' }
+        return names[match[1]] + ' ' + match[2]
+    }
+
+    function durationTitle(value) {
+        var map = {
+            S: '< 10 ' + tr('shikimori_minutes'),
+            D: '< 30 ' + tr('shikimori_minutes'),
+            F: '30+ ' + tr('shikimori_minutes')
+        }
+        return map[value] || value
+    }
+
+    function orderTitle(value) {
+        var map = {
+            popularity: isRu() ? 'Популярность' : 'Popularity',
+            ranked: isRu() ? 'Рейтинг' : 'Ranked',
+            ranked_shiki: isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking',
+            aired_on: isRu() ? 'Дата выхода' : 'Release date',
+            name: isRu() ? 'Название' : 'Name A–Z',
+            episodes: isRu() ? 'Количество серий' : 'Episode count',
+            status: isRu() ? 'Статус выхода' : 'Release status'
+        }
+        return map[value] || value
     }
 
     function formatScore(score) {
@@ -331,11 +364,7 @@
     }
 
     function normalize(s) {
-        var str = (s || '').toLowerCase()
-        if (UNICODE_NORM_RE) {
-            return str.replace(UNICODE_NORM_RE, ' ').trim()
-        }
-        return str.replace(FALLBACK_NORM_RE, ' ').trim()
+        return String(s || '').toLowerCase().replace(UNICODE_NORM_RE, ' ').trim()
     }
 
     function stripSeasonSuffix(title) {
@@ -443,6 +472,8 @@
         cssInjected = true
         var css = [
             '.shiki-search-wrap,.shiki-full-wrap{width:100%;height:100%;min-height:0;box-sizing:border-box}',
+            '.shiki-full-wrap{height:100%;min-height:0;overflow:hidden;position:relative}',
+            '.shiki-full-wrap>.scroll{height:100%;max-height:100%;min-height:0;overflow:hidden}',
             '.shiki-search-wrap .scroll,.shiki-full-wrap .scroll{width:100%;max-width:100%;box-sizing:border-box}',
             '.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{width:100%;max-width:100%;box-sizing:border-box;padding-left:2em;padding-right:2em}',
             '.shiki-toolbar{display:block;width:100%;max-width:100%;box-sizing:border-box;padding:.45em 0 1.1em}',
@@ -458,22 +489,22 @@
             '.shiki-toolbar .shiki-tab--active{background:rgba(255,255,255,.13);box-shadow:inset 0 -.16em 0 #efbd70;color:#fff}',
             '.shiki-toolbar .shiki-tab.selector--focus,.shiki-toolbar .shiki-tab.focus{background:#fff!important;box-shadow:none!important;color:#111!important;outline:none!important}',
             '.shiki-filter-summary{box-sizing:border-box;width:100%;padding:.15em .15em .4em;color:rgba(255,255,255,.58);font-size:.8em;line-height:1.45;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-list{display:block;width:100%;max-width:100%;box-sizing:border-box}',
+            '.shiki-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8em;width:100%;max-width:100%;box-sizing:border-box;align-items:stretch}',
             '.shikimori-card-rating{position:absolute;left:.45em;bottom:.45em;z-index:5;display:block;padding:.2em .42em;border-radius:.22em;background:rgba(20,23,30,.92);color:#f2c477;font-size:.72em;font-weight:700;line-height:1.25;white-space:nowrap;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}',
-            '.shiki-card{display:flex;align-items:center;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.1);border-radius:0;margin:0;padding:.8em .55em;cursor:pointer}',
-            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.09);border-bottom-color:transparent;border-radius:.32em;box-shadow:inset 0 0 0 2px rgba(255,255,255,.72);outline:none}',
-            '.shiki-card__poster{flex:0 0 auto;width:6.8em}',
-            '.shiki-card__poster img{display:block;width:100%;height:10.2em;max-width:100%;object-fit:cover;border-radius:.28em;background:rgba(255,255,255,.07)}',
-            '.shiki-card__body{flex:1 1 auto;width:auto;min-width:0;box-sizing:border-box;padding:.25em .45em .25em 1.2em;overflow:visible}',
-            '.shiki-card__name{display:block;max-width:100%;font-size:1.22em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
-            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.32em 0 0;font-size:.88em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
-            '.shiki-card__meta{display:block;max-width:100%;margin-top:.55em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card{display:flex;flex-direction:column;align-items:stretch;min-width:0;width:auto;max-width:none;box-sizing:border-box;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:.3em;margin:0;padding:.55em;cursor:pointer}',
+            '.shiki-card.selector--focus,.shiki-card.focus{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.8);box-shadow:inset 0 0 0 1px rgba(255,255,255,.72);outline:none}',
+            '.shiki-card__poster{display:block;width:100%;flex:0 0 auto}',
+            '.shiki-card__poster img{display:block;width:100%;height:auto;aspect-ratio:2/3;max-width:100%;object-fit:contain;border-radius:.22em;background:rgba(255,255,255,.07)}',
+            '.shiki-card__body{display:block;flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box;padding:.55em .2em .25em;overflow:hidden}',
+            '.shiki-card__name{display:block;max-width:100%;font-size:1.02em;font-weight:600;line-height:1.25;white-space:normal;overflow-wrap:break-word;word-wrap:break-word;word-break:normal}',
+            '.shiki-card__orig{max-width:100%;color:rgba(255,255,255,.55);margin:.25em 0 0;font-size:.78em;line-height:1.3;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
+            '.shiki-card__meta{display:block;max-width:100%;margin-top:.35em;color:rgba(255,255,255,.68);font-size:.86em;line-height:1.55;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-card__meta-item{display:inline}',
             '.shiki-card__meta-item+.shiki-card__meta-item:before{content:"·";display:inline-block;margin:0 .55em;color:rgba(255,255,255,.38)}',
             '.shiki-card__kind{display:inline-block;padding:.05em .42em;border-radius:.22em;background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);font-size:.88em;line-height:1.45}',
             '.shiki-card__score{color:#f0c477;font-weight:700;white-space:nowrap}',
             '.shiki-empty{padding:2.5em 1em;text-align:center;color:rgba(255,255,255,.65);font-size:1em}',
-            '.shiki-more,.shiki-retry{display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.8em 0 1.2em;cursor:pointer;font-weight:600}',
+            '.shiki-more,.shiki-retry{grid-column:1/-1;display:block;box-sizing:border-box;width:100%;background:rgba(255,255,255,.055);color:rgba(255,255,255,.88);padding:.9em 1.2em;text-align:center;border:0;border-radius:1em;margin:.2em 0 .6em;cursor:pointer;font-weight:600}',
             '.shiki-more.selector--focus,.shiki-more.focus,.shiki-retry.selector--focus,.shiki-retry.focus{background:#fff;color:#111;outline:none}',
             '.shiki-full{display:flex;width:100%;max-width:100%;box-sizing:border-box;padding:1.1em .2em 2em;align-items:flex-start}',
             '.shiki-full__poster{flex:0 0 auto;margin-right:1.5em}',
@@ -504,8 +535,9 @@
             '.shiki-subcard__body{min-width:0;flex:1;overflow:hidden}',
             '.shiki-subcard__title{font-size:.95em;font-weight:600;white-space:normal;overflow-wrap:break-word;word-wrap:break-word}',
             '.shiki-subcard__sub{font-size:.82em;color:rgba(255,255,255,.55);margin-top:.15em;white-space:normal}',
-            '@media (max-width:1100px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:1em;padding-right:1em}.shiki-card__poster{width:6.2em}.shiki-card__poster img{height:9.3em}.shiki-card__body{padding-left:.9em;padding-right:.35em}}',
-            '@media (max-width:700px){.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
+            '@media (max-width:1400px){.shiki-list{grid-template-columns:repeat(4,minmax(0,1fr))}}',
+            '@media (max-width:900px){.shiki-list{grid-template-columns:repeat(3,minmax(0,1fr))}}',
+            '@media (max-width:600px){.shiki-list{grid-template-columns:repeat(2,minmax(0,1fr))}.shiki-search-wrap .scroll__content,.shiki-full-wrap .scroll__content{padding-left:.7em;padding-right:.7em}.shiki-toolbar__tools .shiki-tab--search{flex:1 1 100%}.shiki-toolbar__tools .shiki-tab--filter{flex:1 1 auto}.shiki-toolbar__tabs .shiki-tab--section{flex:1 1 42%}.shiki-full{flex-direction:column;align-items:center}.shiki-full__poster{margin:0 0 1em}.shiki-full__img{max-width:55vw}.shiki-full__info{width:100%}.shiki-full__title,.shiki-full__orig{text-align:center}.shiki-full__actions{justify-content:center}.shiki-subcard{flex-basis:100%;margin-right:0}}'
         ].join('')
         $('head').append('<style id="shikimori-plugin-styles">' + css + '</style>')
     }
@@ -636,6 +668,7 @@
             if (filters.score) query += '&score=' + encodeURIComponent(filters.score)
             if (filters.duration) query += '&duration=' + encodeURIComponent(filters.duration)
             if (filters.rating) query += '&rating=' + encodeURIComponent(filters.rating)
+            if (filters.genre) query += '&genre=' + encodeURIComponent(filters.genre)
             if (filters.order) order = filters.order
         }
         query += '&order=' + encodeURIComponent(order)
@@ -947,8 +980,47 @@
     }
 
     // ---------- controller helper (standard Lampa spatial navigation) ----------
-    function activateContentController(scroll, getLastFocused) {
+    function activateContentController(scroll, getLastFocused, setLastFocused) {
         var container = scroll.render(true)
+
+        // Lampa's Scroll moves .scroll__body with transforms; Navigator.canmove()
+        // only reports focus-neighbours and can be false while content remains above.
+        // In that case, move focus to the nearest selector visually above and let
+        // Lampa.Scroll reveal it. Hand off to the head only at the real content edge.
+        function focusAboveCurrent() {
+            var current = getLastFocused && getLastFocused()
+            if (!current || !current.getBoundingClientRect) return false
+
+            var currentRect = current.getBoundingClientRect()
+            var currentCenter = currentRect.left + currentRect.width / 2
+            var candidates = $(container).find('.selector').toArray()
+            var best = null
+            var bestScore = Infinity
+
+            for (var i = 0; i < candidates.length; i++) {
+                var candidate = candidates[i]
+                if (candidate === current || !candidate.getBoundingClientRect) continue
+                var rect = candidate.getBoundingClientRect()
+                if (!rect.width || !rect.height) continue
+                var centerY = rect.top + rect.height / 2
+                if (centerY >= currentRect.top + currentRect.height / 2 - 2) continue
+
+                var verticalGap = Math.max(0, currentRect.top - rect.bottom)
+                var horizontalGap = Math.abs((rect.left + rect.width / 2) - currentCenter)
+                var score = verticalGap * 2 + horizontalGap
+                if (score < bestScore) {
+                    bestScore = score
+                    best = candidate
+                }
+            }
+
+            if (!best) return false
+            if (setLastFocused) setLastFocused(best)
+            try { Lampa.Controller.collectionFocus(best, container) } catch (e) {}
+            try { scroll.update(best, true) } catch (e) {}
+            return true
+        }
+
         Lampa.Controller.add('content', {
             toggle: function () {
                 Lampa.Controller.collectionSet(container)
@@ -956,7 +1028,7 @@
             },
             up: function () {
                 if (typeof Navigator !== 'undefined' && Navigator.canmove('up')) Navigator.move('up')
-                else Lampa.Controller.toggle('head')
+                else if (!focusAboveCurrent()) Lampa.Controller.toggle('head')
             },
             down: function () {
                 if (typeof Navigator !== 'undefined' && Navigator.canmove('down')) Navigator.move('down')
@@ -1012,6 +1084,10 @@
         var keyword = (object && object.search) ? String(object.search).trim() : ''
         var mode = (object && object.mode) ? object.mode : (keyword ? 'search' : 'ongoing')
         var filters = (object && object.filters && typeof object.filters === 'object') ? object.filters : {}
+        var adultFilterEnabled = false
+        try { adultFilterEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
+        if (!adultFilterEnabled && filters.rating === 'rx') delete filters.rating
+        if (!adultFilterEnabled && String(filters.genre) === '12') delete filters.genre
 
         function setLoader(active) {
             if (self.activity && typeof self.activity.loader === 'function') {
@@ -1035,7 +1111,7 @@
 
         function setupController() {
             if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused })
+            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
         }
 
         function askKeyword() {
@@ -1111,17 +1187,18 @@
         }
 
         function hasActiveFilters() {
-            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.order)
+            return !!(filters.kind || filters.status || filters.season || filters.score || filters.duration || filters.rating || filters.genre || filters.order)
         }
         function filterSummary() {
             var parts = []
-            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + filters.kind.toUpperCase())
+            if (filters.kind) parts.push(tr('shikimori_filter_kind') + ': ' + kindTitle(filters.kind))
             if (filters.status) parts.push(tr('shikimori_filter_status') + ': ' + statusTitle(filters.status))
-            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + filters.season)
+            if (filters.season) parts.push(tr('shikimori_filter_year') + ': ' + seasonTitle(filters.season))
             if (filters.score) parts.push(tr('shikimori_filter_score') + ': ' + filters.score + '+')
-            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + filters.duration)
+            if (filters.duration) parts.push(tr('shikimori_filter_duration') + ': ' + durationTitle(filters.duration))
             if (filters.rating) parts.push(tr('shikimori_filter_rating') + ': ' + formatRating(filters.rating))
-            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + filters.order)
+            if (filters.genre) parts.push(tr('shikimori_filter_genre') + ': ' + genreTitle(filters.genre))
+            if (filters.order) parts.push(tr('shikimori_filter_order') + ': ' + orderTitle(filters.order))
             return parts.join('  ·  ')
         }
         function replaceFilters(next) {
@@ -1130,14 +1207,38 @@
         }
         function showFilterMenu() {
             if (!Lampa.Select || typeof Lampa.Select.show !== 'function') { Lampa.Noty.show(tr('shikimori_filters')); return }
+            var adultEnabled = false
+            try { adultEnabled = !!(Lampa.Storage && Lampa.Storage.field && Lampa.Storage.field('shikimori_adult')) } catch (e) {}
+            var seasonValues = [['', tr('shikimori_filter_any')]]
+            var seasonNames = isRu()
+                ? [['winter', 'Зима'], ['spring', 'Весна'], ['summer', 'Лето'], ['fall', 'Осень']]
+                : [['winter', 'Winter'], ['spring', 'Spring'], ['summer', 'Summer'], ['fall', 'Fall']]
+            var currentYear = new Date().getFullYear()
+            for (var sy = currentYear; sy >= currentYear - 2; sy--) {
+                for (var ss = 0; ss < seasonNames.length; ss++) {
+                    seasonValues.push([seasonNames[ss][0] + '_' + sy, seasonNames[ss][1] + ' ' + sy])
+                }
+            }
+            for (var y = currentYear; y >= 1980; y--) seasonValues.push([String(y), String(y)])
+
+            var kindValues = [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['tv_13', 'TV · 13'], ['tv_24', 'TV · 24'], ['tv_48', 'TV · 48'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special'], ['tv_special', 'TV Special'], ['music', 'Music'], ['pv', 'PV'], ['cm', 'CM']]
+            var genreValues = [['', tr('shikimori_filter_any')]]
+            for (var gid = 1; gid <= 41; gid++) {
+                if (gid === 12 && !adultEnabled) continue
+                genreValues.push([String(gid), genreTitle(gid)])
+            }
+            var ratingValues = [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+']]
+            if (adultEnabled) ratingValues.push(['rx', 'Rx'])
+
             var entries = [
-                { key: 'kind', title: tr('shikimori_filter_kind'), values: [['', tr('shikimori_filter_any')], ['tv', 'TV'], ['movie', tr('shikimori_movie')], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Special']] },
+                { key: 'kind', title: tr('shikimori_filter_kind'), values: kindValues },
                 { key: 'status', title: tr('shikimori_filter_status'), values: [['', tr('shikimori_filter_any')], ['anons', tr('shikimori_anons')], ['ongoing', tr('shikimori_ongoing')], ['released', tr('shikimori_released_s')]] },
-                { key: 'season', title: tr('shikimori_filter_year'), values: (function () { var years = [['', tr('shikimori_filter_any')]]; for (var y = new Date().getFullYear(); y >= 1980; y--) years.push([String(y), String(y)]); return years })() },
+                { key: 'season', title: tr('shikimori_filter_year'), values: seasonValues },
+                { key: 'genre', title: tr('shikimori_filter_genre'), values: genreValues },
                 { key: 'score', title: tr('shikimori_filter_score'), values: [['', tr('shikimori_filter_any')], ['5', '5+'], ['6', '6+'], ['7', '7+'], ['8', '8+'], ['9', '9+']] },
                 { key: 'duration', title: tr('shikimori_filter_duration'), values: [['', tr('shikimori_filter_any')], ['S', '< 10 ' + tr('shikimori_minutes')], ['D', '< 30 ' + tr('shikimori_minutes')], ['F', '30+ ' + tr('shikimori_minutes')]] },
-                { key: 'rating', title: tr('shikimori_filter_rating'), values: [['', tr('shikimori_filter_any')], ['g', 'G'], ['pg', 'PG'], ['pg_13', 'PG-13'], ['r', 'R'], ['r_plus', 'R+'], ['rx', 'Rx']] },
-                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['aired_on', tr('shikimori_filter_year')], ['name', 'A–Z']] }
+                { key: 'rating', title: tr('shikimori_filter_rating'), values: ratingValues },
+                { key: 'order', title: tr('shikimori_filter_order'), values: [['', tr('shikimori_filter_any')], ['popularity', tr('shikimori_tab_popular')], ['ranked', tr('shikimori_tab_top')], ['ranked_shiki', isRu() ? 'Рейтинг Shikimori' : 'Shikimori ranking'], ['aired_on', isRu() ? 'Дата выхода' : 'Release date'], ['episodes', isRu() ? 'Количество серий' : 'Episode count'], ['name', 'A–Z'], ['status', isRu() ? 'Статус выхода' : 'Release status']] }
             ]
             var items = entries.map(function (entry) { return { title: entry.title + (filters[entry.key] ? ' · ' + filters[entry.key] : ''), subtitle: filters[entry.key] ? tr('shikimori_filter_active') : '', filterKey: entry.key } })
             items.push({ title: tr('shikimori_filter_clear'), filterKey: '__clear' })
@@ -1356,7 +1457,7 @@
 
         function setupController() {
             if (destroyed) return
-            activateContentController(scroll, function () { return lastFocused })
+            activateContentController(scroll, function () { return lastFocused }, function (element) { lastFocused = element })
         }
 
         function renderSubSection(slot, titleText, entries, visibleLimit) {
@@ -1408,6 +1509,8 @@
             }
 
             slot.empty().append(sec)
+            // Related/similar cards arrive after the initial detail render; refresh Lampa's scroll bounds.
+            try { scroll.update(lastFocused || sec.find('.selector').first()[0] || sec[0], false) } catch (e) {}
             var shikiCanAppend = false
             try {
                 if (Lampa.Controller && Lampa.Controller.enabled) {
@@ -1602,6 +1705,8 @@
 
             scroll.append(box)
             setupController()
+            // Recalculate the scroll area after the complete details DOM is attached.
+            try { scroll.update(lastFocused || box.find('.selector').first()[0] || box[0], false) } catch (e) {}
 
             if (a.id) {
                 loadSecondarySections(a.id, infoBox)
