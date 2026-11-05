@@ -13,12 +13,16 @@
     });
   }
 
-  function safeImageUrl(value) {
+  function imageUrlValue(value) {
     var url = String(value || '').trim();
-    if (/^https?:\/\//i.test(url)) return escapeHtml(url);
-    if (/^\/\//.test(url)) return escapeHtml('https:' + url);
-    if (/^\//.test(url)) return escapeHtml('https://shikimori.one' + url);
+    if (/^https?:\/\//i.test(url)) return url;
+    if (/^\/\//.test(url)) return 'https:' + url;
+    if (/^\//.test(url)) return 'https://shikimori.one' + url;
     return '';
+  }
+
+  function safeImageUrl(value) {
+    return escapeHtml(imageUrlValue(value));
   }
 
   function NetworkManager(timeout) {
@@ -157,7 +161,7 @@
 
   function requestOAuthToken(payload, success, error) {
     $.ajax({
-      url: 'https://shikimori.one/oauth/token',
+      url: 'https://shikimori.io/oauth/token',
       method: 'POST',
       contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
       processData: false,
@@ -332,7 +336,7 @@
     }
     Lampa.Storage.set(OAUTH_STATE_KEY, state);
 
-    var authUrl = 'https://shikimori.one/oauth/authorize?' + encodeForm({
+    var authUrl = 'https://shikimori.io/oauth/authorize?' + encodeForm({
       client_id: config.client_id,
       redirect_uri: config.redirect_uri,
       response_type: 'code',
@@ -514,8 +518,8 @@
 
   function main(params, oncomplite, onerror, network) {
     var query = [
-      'query Animes($limit: PositiveInt!, $page: PositiveInt!, $order: OrderEnum!, $kind: AnimeKindString, $status: AnimeStatusString, $genre: String, $season: SeasonString, $search: String, $score: Int, $rating: RatingString) {',
-      '  animes(limit: $limit, page: $page, order: $order, kind: $kind, status: $status, genre: $genre, season: $season, search: $search, score: $score, rating: $rating) {',
+      'query Animes($limit: PositiveInt!, $page: PositiveInt!, $order: OrderEnum!, $kind: AnimeKindString, $status: AnimeStatusString, $genre: String, $season: SeasonString, $search: String, $score: Int, $rating: RatingString, $duration: DurationString) {',
+      '  animes(limit: $limit, page: $page, order: $order, kind: $kind, status: $status, genre: $genre, season: $season, search: $search, score: $score, rating: $rating, duration: $duration) {',
       '    id',
       '    malId',
       '    name',
@@ -553,6 +557,7 @@
       if (minScore >= 1 && minScore <= 10) variables.score = minScore;
     }
     if (params && params.rating) variables.rating = String(params.rating);
+    if (params && params.duration) variables.duration = String(params.duration);
 
     function complete(response) {
       if (!response || response.errors || !response.data || !Array.isArray(response.data.animes)) {
@@ -826,7 +831,7 @@
       : (data.name || data.english || data.japanese || data.russian);
     var year = data.airedOn && data.airedOn.year ? String(data.airedOn.year) : '';
     var poster = data.poster && (data.poster.originalUrl || data.poster.mainUrl)
-      ? safeImageUrl(data.poster.originalUrl || data.poster.mainUrl)
+      ? imageUrlValue(data.poster.originalUrl || data.poster.mainUrl)
       : '';
     var native = !!(Lampa.Maker && Lampa.Maker.make && Lampa.Manifest && Number(Lampa.Manifest.app_digital) >= 300);
     var item = null;
@@ -879,7 +884,7 @@
       element = item.render(true);
     } else {
       element = Lampa.Template.get('LMEShikimori-Card', {
-        img: poster,
+        img: escapeHtml(poster),
         type: escapeHtml(kindTitle),
         status: escapeHtml(data.__user_rate ? userRateStatusTitle(data.__user_rate.status) : ''),
         rate: escapeHtml(data.score == null ? '—' : data.score),
@@ -896,7 +901,7 @@
     }
 
     this.render = function () {
-      return native ? item.render(true) : element;
+      return native ? item.render() : element;
     };
 
     this.destroy = function () {
@@ -937,16 +942,23 @@
     }
 
     function createSeasonItems() {
-      var seasons = [];
+      var seasons = [
+        { title: '2020-е', code: '2020_2029' },
+        { title: '2010-е', code: '2010_2019' },
+        { title: '2000-е', code: '2000_2009' },
+        { title: '1990-е', code: '199x' },
+        { title: '1980-е', code: '198x' },
+        { title: 'До 1980-х', code: 'ancient' }
+      ];
       var now = new Date();
       for (var offset = -12; offset <= 4; offset++) {
         var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
         var code = getSeason(date);
         if (seasons.indexOf(code) === -1) seasons.push(code);
       }
-      return seasons.map(function (code) {
+      return [{ title: 'Любой сезон / год', code: '' }].concat(seasons.map(function (code) {
         return { title: code.replace('_', ' '), code: code };
-      });
+      }));
     }
 
     var filters = {
@@ -958,6 +970,7 @@
       type: {
         title: 'Тип аниме',
         items: [
+          { title: 'Любой тип', code: '' },
           { title: 'TV Series', code: 'tv' },
           { title: 'Movie', code: 'movie' },
           { title: 'OVA', code: 'ova' },
@@ -972,9 +985,19 @@
       status: {
         title: 'Статус выхода',
         items: [
+          { title: 'Любой статус', code: '' },
           { title: 'Анонс', code: 'anons' },
           { title: 'Выходит', code: 'ongoing' },
           { title: 'Вышло', code: 'released' }
+        ]
+      },
+      duration: {
+        title: 'Длительность эпизода',
+        items: [
+          { title: 'Любая длительность', code: '' },
+          { title: 'Короткая — до 10 минут', code: 'S' },
+          { title: 'Средняя — 10–30 минут', code: 'D' },
+          { title: 'Полная — больше 30 минут', code: 'F' }
         ]
       },
       score: {
@@ -1025,6 +1048,7 @@
         status: filterState.status,
         score: filterState.score,
         rating: filterState.rating,
+        duration: filterState.duration,
         seasons: filterState.seasons,
         sort: filterState.sort
       };
@@ -1032,13 +1056,15 @@
         var filter = filters[key];
         if (!filter) return;
         filter.items.forEach(function (item) {
-          item.selected = String(item.code) === String(singleValues[key] == null ? '' : singleValues[key]);
+          item.selected = String(item.code) === String(singleValues[key] == null ? (key === 'sort' ? 'ranked' : '') : singleValues[key]);
+          item.checked = !!item.selected;
         });
       });
 
       var genreValues = String(filterState.genre || '').split(',').filter(Boolean);
       filters.kind.items.forEach(function (item) {
         item.selected = genreValues.indexOf(String(item.id)) !== -1;
+        item.checked = !!item.selected;
       });
     }
 
@@ -1079,7 +1105,7 @@
       var genres = filters.kind.items.filter(function (item) { return item.selected; }).map(function (item) { return String(item.id); });
       if (genres.length) params.genre = genres.join(',');
       if (filterState.search) params.search = String(filterState.search);
-      ['type', 'status', 'score', 'rating', 'seasons', 'sort'].forEach(function (key) {
+      ['type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
         var chosen = filters[key].items.filter(function (item) { return item.selected; })[0];
         if (chosen && chosen.code !== '') {
           var apiKey = key === 'type' ? 'kind' : key;
@@ -1114,10 +1140,11 @@
       Lampa.Select.show({
         title: filters.kind.title,
         items: filters.kind.items,
+        nohide: true,
         onBack: onReturn,
-        onSelect: function (chosen) {
-          if (chosen) chosen.selected = !chosen.selected;
-          openGenreFilter(onReturn);
+        onCheck: function (chosen) {
+          chosen.selected = !!chosen.checked;
+          selectedTitle(filters.kind);
         }
       });
     }
@@ -1159,7 +1186,7 @@
     }
 
     function mainFilterMenu() {
-      ['kind', 'type', 'status', 'score', 'rating', 'seasons', 'sort'].forEach(function (key) {
+      ['kind', 'type', 'status', 'score', 'rating', 'duration', 'seasons', 'sort'].forEach(function (key) {
         selectedTitle(filters[key]);
       });
       Lampa.Select.show({
@@ -1172,6 +1199,7 @@
           filters.status,
           filters.score,
           filters.rating,
+          filters.duration,
           filters.seasons,
           filters.sort,
           { title: 'Сбросить все фильтры', resetFilters: true }
@@ -1186,6 +1214,7 @@
           else if (chosen === filters.status) openSingleFilter('status', mainFilterMenu);
           else if (chosen === filters.score) openSingleFilter('score', mainFilterMenu);
           else if (chosen === filters.rating) openSingleFilter('rating', mainFilterMenu);
+          else if (chosen === filters.duration) openSingleFilter('duration', mainFilterMenu);
           else if (chosen === filters.seasons) openSingleFilter('seasons', mainFilterMenu);
           else if (chosen === filters.sort) openSingleFilter('sort', mainFilterMenu);
         }
