@@ -118,6 +118,8 @@
   }
 
   function search(animeData, network) {
+    if (!animeData || animeData.id == null) return;
+
     var apiKey = '4ef0d7355d9ffb5151e987764708ce96';
     var language = Lampa.Storage.field('language') || 'en';
     var cacheKey = String(animeData && animeData.id || '');
@@ -174,7 +176,7 @@
 
     function normalizeTitle(value) {
       return cleanName(value).toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF]+/g, ' ')
         .trim();
     }
 
@@ -384,6 +386,7 @@
     var currentPage = 0;
     var pageSize = 36;
     var headerReady = false;
+    var self = this;
 
     network.timeout(15000);
     lookupNetwork.timeout(15000);
@@ -466,7 +469,7 @@
     };
 
     function loadPage(page) {
-      if (!inited || loading || (!hasMore && page > currentPage + 1)) return;
+      if (!inited || loading || !hasMore) return;
 
       loading = true;
       var params = $.extend({}, object || {}, { page: page });
@@ -480,11 +483,11 @@
         hasMore = result.length >= pageSize;
 
         if (page === 1 && result.length === 0) {
-          _this.empty();
+          self.empty();
           return;
         }
 
-        _this.build(result);
+        self.build(result);
         _this.activity.loader(false);
         _this.activity.toggle();
       }, function (error) {
