@@ -290,6 +290,8 @@ function testLocalWatchlistPersistence() {
 }
 
 function testWatchlistScreenAndLongPressRemoval() {
+  jqueryInstances.length = 0;
+  scrollInstances.length = 0;
   storageData.lme_shikimori_watchlist = [{
     id: 501,
     name: 'Saved Anime',
@@ -343,6 +345,8 @@ function testCardEscapingAndNullSafety() {
 
 function testPaginationDeduplicationAndDestroy() {
   ajaxCalls.length = 0;
+  jqueryInstances.length = 0;
+  scrollInstances.length = 0;
   const component = new api.Component({ page: 1 });
   const activity = {
     loader() {},
