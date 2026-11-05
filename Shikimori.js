@@ -1126,6 +1126,9 @@
   }
   function startPlugin() {
     window.plugin_shikimori_ready = true;
+    // Remove credentials and tokens left by older OAuth-enabled plugin versions.
+    Lampa.Storage.set('lme_shikimori_account_v1', {});
+    Lampa.Storage.set('lme_shikimori_oauth_state', '');
     var manifest = {
       type: "other",
       version: "0.3",
