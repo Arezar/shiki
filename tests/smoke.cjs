@@ -423,8 +423,14 @@ function testEmptyRestoredPage() {
 function testCatalogueRetryAfterInitialFailure() {
   ajaxCalls.length = 0;
   const component = new api.Component({ page: 1 });
-  component.activity = { loader() {}, toggle() {} };
+  component.activity = {
+    loader() {},
+    toggle() {
+      if (controllerCollections.content) controllerCollections.content.toggle();
+    }
+  };
   component.create();
+  component.start();
 
   const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
   const firstRequest = graphqlRequests()[0];
@@ -436,6 +442,7 @@ function testCatalogueRetryAfterInitialFailure() {
 
   const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry">') !== -1);
   assert.ok(retry && retry.handlers['hover:enter'], 'failed initial load should expose a remote-friendly retry control');
+  assert.equal(lastCollectionFocus, retry, 'failure should move remote focus to the retry control');
   retry.handlers['hover:enter']();
   assert.equal(graphqlRequests().length, 2, 'retry should issue another catalogue request');
   const retryRequest = graphqlRequests()[1];
