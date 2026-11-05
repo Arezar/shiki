@@ -32,6 +32,7 @@ const storage = {};
 let lastTemplate = null;
 let emptyCreated = 0;
 const scrollInstances = [];
+const selectCalls = [];
 
 function FakeJQuery(selector) {
   this.selector = selector;
