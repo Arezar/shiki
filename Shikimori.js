@@ -345,7 +345,7 @@
       }
 
       var url = tmdbUrl('search/multi') +
-        '&include_adult=true&query=' + encodeURIComponent(cleaned);
+        '&query=' + encodeURIComponent(cleaned);
 
       requestGet(network, url, function (response) {
         var results = response && Array.isArray(response.results) ? response.results : [];
@@ -527,6 +527,8 @@
     var self = this;
     var filterDefaults = Lampa.Storage.get(FILTERS_STORAGE_KEY, {}) || {};
     var filterState = $.extend({}, filterDefaults, object);
+    var retryButton = null;
+    var retryStatus = null;
 
     function getSeason(date) {
       var month = date.getMonth();
@@ -840,8 +842,35 @@
       });
     }
 
+    function clearRetry() {
+      if (retryButton && typeof retryButton.remove === 'function') retryButton.remove();
+      if (retryStatus && typeof retryStatus.remove === 'function') retryStatus.remove();
+      retryButton = null;
+      retryStatus = null;
+    }
+
+    function showRetry(page, message) {
+      clearRetry();
+      retryStatus = $('<div class="LMEShikimori__retry-info"></div>');
+      if (retryStatus && typeof retryStatus.text === 'function') {
+        retryStatus.text('Не удалось загрузить данные: ' + message);
+      }
+      retryButton = $('<div class="simple-button simple-button--filter selector LMEShikimori__retry">Повторить загрузку</div>');
+      retryButton.on('hover:enter', function () {
+        if (!inited || loading) return;
+        clearRetry();
+        self.activity.loader(true);
+        loadPage(page);
+      });
+      body.prepend(retryButton);
+      body.prepend(retryStatus);
+      self.activity.loader(false);
+      self.activity.toggle();
+    }
+
     function reloadCurrent() {
       if (!inited) return;
+      clearRetry();
       network.clear();
       lookupNetwork.clear();
       items.forEach(function (item) { item.destroy(); });
@@ -891,6 +920,7 @@
 
       function complete(result) {
         if (!inited) return;
+        clearRetry();
         loading = false;
         currentPage = page;
         object.page = page;
@@ -909,8 +939,8 @@
         loading = false;
         var message = network.errorDecode ? network.errorDecode(error, error && error.statusText) :
           (error && error.message) || 'Ошибка сети';
-        if (!items.length) self.empty();
-        Lampa.Noty.show('Не удалось загрузить ' + (page > 1 ? 'следующую страницу' : 'каталог') + ': ' + escapeHtml(message));
+        showRetry(page, message);
+        Lampa.Noty.show('Не удалось загрузить ' + (page > 1 ? 'следующую страницу' : 'каталог') + ': ' + escapeHtml(message) + '. Нажмите «Повторить загрузку».');
       }
 
       API.main(params, complete, failed, network);
@@ -999,6 +1029,7 @@
     this.destroy = function () {
       inited = false;
       loading = false;
+      clearRetry();
       network.clear();
       lookupNetwork.clear();
       head.off();
