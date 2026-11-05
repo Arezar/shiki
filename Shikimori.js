@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.5'
+    var VERSION = '1.5.7'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -304,7 +304,15 @@
         }
         var urls = []
         function push(url) {
-            if (url && url !== PLACEHOLDER && urls.indexOf(url) < 0) urls.push(url)
+            if (!url || url === PLACEHOLDER) return
+            if (urls.indexOf(url) < 0) urls.push(url)
+            // CDN subdomains such as desu.shikimori.one may have a matching .io host.
+            var hostMarker = '.shikimori.one'
+            var markerAt = url.indexOf(hostMarker)
+            if (markerAt >= 0) {
+                var mirror = url.substring(0, markerAt) + '.shikimori.io' + url.substring(markerAt + hostMarker.length)
+                if (urls.indexOf(mirror) < 0) urls.push(mirror)
+            }
         }
         paths.forEach(function (path) {
             var p = String(path).trim()
@@ -634,6 +642,11 @@
                     var foundIdx = HOSTS.indexOf(host)
                     if (foundIdx >= 0) hostIdx = foundIdx
                     var isEmptyArray = Array.isArray(res) && res.length === 0
+                    // Try the alternate Shikimori host before accepting an empty response.
+                    if (isEmptyArray && idx + 1 < candidates.length) {
+                        tryCandidate(idx + 1)
+                        return
+                    }
                     if (!isEmptyArray) cacheSet(cacheKey, res)
                     success(res)
                 }, function () {
@@ -808,18 +821,16 @@
             net = optionalNet || createNetwork(12000)
         }
 
-        var engFirst = (Array.isArray(animeObj.english) && animeObj.english[0]) ? animeObj.english[0] : ''
-        var primaryQueries = dedupeQueries([animeObj.name, engFirst, animeObj.russian])
+        var englishTitles = Array.isArray(animeObj.english) ? animeObj.english : [animeObj.english]
+        var synonyms = Array.isArray(animeObj.synonyms) ? animeObj.synonyms : [animeObj.synonyms]
+        var engFirst = englishTitles[0] || ''
+        var primaryQueries = dedupeQueries([animeObj.name].concat(englishTitles, [animeObj.russian], synonyms))
         if (!primaryQueries.length) {
             callback([], false)
             return
         }
 
-        var fallbackQueries = dedupeQueries([
-            stripSeasonSuffix(animeObj.name),
-            stripSeasonSuffix(engFirst),
-            stripSeasonSuffix(animeObj.russian)
-        ]).filter(function (q) {
+        var fallbackQueries = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)).filter(function (q) {
             var nq = normalize(q)
             for (var i = 0; i < primaryQueries.length; i++) {
                 if (normalize(primaryQueries[i]) === nq) return false
@@ -827,13 +838,9 @@
             return Boolean(nq)
         })
 
-        var targetNorms = dedupeQueries([
-            animeObj.name,
-            engFirst,
-            animeObj.russian,
-            stripSeasonSuffix(animeObj.name),
-            stripSeasonSuffix(engFirst)
-        ]).map(normalize).filter(Boolean)
+        var targetNorms = dedupeQueries([animeObj.name, animeObj.russian].concat(englishTitles, synonyms).concat(
+            [animeObj.name, animeObj.russian].concat(englishTitles, synonyms).map(stripSeasonSuffix)
+        )).map(normalize).filter(Boolean)
 
         var targetYear = animeObj.aired_on ? parseInt(String(animeObj.aired_on).substr(0, 4), 10) : 0
 
@@ -1862,11 +1869,6 @@
                         shikiCurCtrl = (shikiEnCur && typeof shikiEnCur === 'object') ? shikiEnCur.name : null
                     }
                 } catch (e) {}
-                if (shikiCurCtrl && prevCtrl && shikiCurCtrl !== prevCtrl) {
-                    cancelled = true
-                    try { Lampa.Loading.stop() } catch (e) {}
-                    return
-                }
                 var shikiCurActivity = null
                 try {
                     if (Lampa.Activity && typeof Lampa.Activity.active === 'function') shikiCurActivity = Lampa.Activity.active()
@@ -1882,7 +1884,10 @@
                 var queryNorms = queries.map(normalize).filter(Boolean)
                 var singleConfident = false
                 if (animes.length === 1 && animes[0]) {
-                    var candNames = dedupeQueries([animes[0].name, animes[0].russian]).map(normalize)
+                    var candNames = dedupeQueries([animes[0].name, animes[0].russian].concat(
+                        Array.isArray(animes[0].english) ? animes[0].english : [animes[0].english],
+                        Array.isArray(animes[0].synonyms) ? animes[0].synonyms : [animes[0].synonyms]
+                    )).map(normalize)
                     for (var qi = 0; qi < queryNorms.length && !singleConfident; qi++) {
                         for (var ci = 0; ci < candNames.length; ci++) {
                             if (candNames[ci] && (candNames[ci] === queryNorms[qi] || isSubstrTitleMatch(candNames[ci], queryNorms[qi]))) {
@@ -2056,29 +2061,56 @@
     function findExactShikiAnime(results, titles, year) {
         if (!Array.isArray(results)) return null
         var wanted = titles.map(normalize).filter(Boolean)
+        var best = null
+        var bestMatch = 0
         for (var i = 0; i < results.length; i++) {
             var anime = results[i]
             if (!anime) continue
-            var names = dedupeQueries([anime.name, anime.russian]).map(normalize)
-            var exact = false
-            for (var n = 0; n < wanted.length && !exact; n++) {
-                if (wanted[n] && names.indexOf(wanted[n]) >= 0) exact = true
+            var aliases = [anime.name, anime.russian]
+                .concat(Array.isArray(anime.english) ? anime.english : [anime.english])
+                .concat(Array.isArray(anime.synonyms) ? anime.synonyms : [anime.synonyms])
+            var names = dedupeQueries(aliases).map(normalize).filter(Boolean)
+            var matchScore = 0
+            for (var n = 0; n < wanted.length; n++) {
+                if (!wanted[n]) continue
+                for (var j = 0; j < names.length; j++) {
+                    if (wanted[n] === names[j]) matchScore = Math.max(matchScore, 100)
+                    else if (isSubstrTitleMatch(wanted[n], names[j])) matchScore = Math.max(matchScore, 60)
+                }
             }
-            if (!exact) continue
+            if (!matchScore) continue
             var animeYear = anime.aired_on ? parseInt(String(anime.aired_on).substr(0, 4), 10) : 0
-            if (year && animeYear && Math.abs(year - animeYear) > 1) continue
-            var score = formatScore(anime.score)
-            if (score) return { score: score, id: anime.id }
+            if (year && animeYear) {
+                var yearDiff = Math.abs(year - animeYear)
+                if (yearDiff > 1) continue
+                if (yearDiff === 0) matchScore += 15
+            }
+            if (matchScore > bestMatch) {
+                var score = formatScore(anime.score)
+                if (score && anime.id) {
+                    bestMatch = matchScore
+                    best = { score: score, id: anime.id }
+                }
+            }
         }
-        return null
+        return best
     }
 
     function attachShikiRating(job, result) {
         if (!job || !result || !job.item) return
         var html = job.item.html
-        if (!html || typeof html.find !== 'function') return
+        if (!html || typeof html.find !== 'function') {
+            job.attachTries = (job.attachTries || 0) + 1
+            if (job.attachTries <= 8) setTimeout(function () { attachShikiRating(job, result) }, 250)
+            return
+        }
         var view = html.find('.card__view').first()
-        if (!view.length || view.find('.shikimori-card-rating').length) return
+        if (!view.length) {
+            job.attachTries = (job.attachTries || 0) + 1
+            if (job.attachTries <= 8) setTimeout(function () { attachShikiRating(job, result) }, 250)
+            return
+        }
+        if (view.find('.shikimori-card-rating').length) return
         view.append($('<div class="shikimori-card-rating" title="Shikimori">SHIKI ' + esc(result.score) + '</div>'))
         try { html.addClass('card--shikimori-rated') } catch (e) {}
     }
