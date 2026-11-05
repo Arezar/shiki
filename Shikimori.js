@@ -16,7 +16,7 @@
     window.shikimori_plugin_ready = true
 
     var HOSTS = ['https://shikimori.one', 'https://shikimori.io']
-    var VERSION = '1.5.9'
+    var VERSION = '1.6.0'
     var PAGE = 20
     var CACHE_TTL = 15 * 60 * 1000
     var CACHE_MAX = 80
@@ -286,6 +286,45 @@
         return PLACEHOLDER
     }
 
+    function resolvePosterUrlCandidates(rawPath) {
+        if (!rawPath || typeof rawPath !== 'string') return []
+        var path = rawPath.trim()
+        if (!path) return []
+        if (path.indexOf('//') === 0) path = 'https:' + path
+
+        var urls = []
+        function add(url) {
+            if (url && url !== PLACEHOLDER && urls.indexOf(url) < 0) urls.push(url)
+        }
+
+        var schemePos = path.indexOf('://')
+        if (schemePos > 0) {
+            var authorityStart = schemePos + 3
+            var boundary = path.indexOf('/', authorityStart)
+            var queryPos = path.indexOf('?', authorityStart)
+            var hashPos = path.indexOf('#', authorityStart)
+            if (boundary < 0 || (queryPos >= 0 && queryPos < boundary) || (hashPos >= 0 && hashPos < boundary)) {
+                boundary = queryPos >= 0 ? queryPos : hashPos
+            }
+            var origin = boundary >= 0 ? path.substring(0, boundary) : path
+            var suffix = boundary >= 0 ? path.substring(boundary) : '/'
+            if (suffix.charAt(0) === '?' || suffix.charAt(0) === '#') suffix = '/' + suffix
+            add(path)
+
+            var knownHost = HOSTS.some(function (host) {
+                return origin.toLowerCase() === host.toLowerCase()
+            })
+            if (knownHost) HOSTS.forEach(function (host) { add(host + suffix) })
+            return urls
+        }
+
+        if (path.charAt(0) === '/') {
+            add(activeHost() + path)
+            HOSTS.forEach(function (host) { add(host + path) })
+        }
+        return urls
+    }
+
     function posterCandidates(a, highRes) {
         if (!a) return []
         var paths = []
@@ -293,8 +332,7 @@
             if (path && typeof path === 'string' && paths.indexOf(path) < 0) paths.push(path)
         }
 
-        // Match the working reference plugin: use Shikimori's original poster URL first.
-        // Keep only URLs actually returned by the API; do not guess mirror hostnames.
+        // GraphQL exposes the current full-size poster; REST image fields remain fallbacks.
         if (a.poster) {
             add(a.poster.originalUrl)
             add(a.poster.original)
@@ -312,10 +350,94 @@
 
         var urls = []
         paths.forEach(function (path) {
-            var url = resolveImageUrl(String(path).trim())
-            if (url && url !== PLACEHOLDER && urls.indexOf(url) < 0) urls.push(url)
+            resolvePosterUrlCandidates(path).forEach(function (url) {
+                if (urls.indexOf(url) < 0) urls.push(url)
+            })
         })
         return urls
+    }
+
+    // Shikimori's v1 REST image field can be an older/low-resolution poster.
+    // GraphQL poster.originalUrl returns the current poster used by the website.
+    function fetchShikiPoster(animeId, success) {
+        var id = String(animeId || '').trim()
+        var validId = /^[0-9]+$/.test(id)
+        var cacheKey = 'shiki-poster:' + id
+        var cached = validId ? cacheGet(cacheKey) : undefined
+        var cancelled = false
+        var request = null
+
+        function finish(url) {
+            if (cancelled) return
+            if (url) cacheSet(cacheKey, url)
+            if (typeof success === 'function') success(url || '')
+        }
+
+        if (cached) {
+            finish(cached)
+            return function () {}
+        }
+        if (!validId || typeof $.ajax !== 'function') {
+            finish('')
+            return function () {}
+        }
+
+        var hosts = getHostCandidates()
+        var hostIndex = 0
+        var query = 'query($id: String!) { animes(ids: $id, limit: 1) { id poster { originalUrl } } }'
+
+        function tryHost() {
+            if (cancelled) return
+            if (hostIndex >= hosts.length) {
+                finish('')
+                return
+            }
+
+            var host = hosts[hostIndex++]
+            try {
+                request = $.ajax({
+                    url: host + '/api/graphql',
+                    method: 'POST',
+                    contentType: 'application/json; charset=utf-8',
+                    dataType: 'json',
+                    data: JSON.stringify({ query: query, variables: { id: id } }),
+                    timeout: 8000
+                })
+                request.done(function (response) {
+                    if (cancelled) return
+                    var animes = response && response.data && Array.isArray(response.data.animes)
+                        ? response.data.animes
+                        : []
+                    var posterUrl = ''
+                    for (var i = 0; i < animes.length; i++) {
+                        if (animes[i] && String(animes[i].id) === id &&
+                            animes[i].poster && typeof animes[i].poster.originalUrl === 'string') {
+                            posterUrl = animes[i].poster.originalUrl.trim()
+                            if (posterUrl) break
+                        }
+                    }
+                    if (!posterUrl) {
+                        tryHost()
+                        return
+                    }
+                    var foundHost = HOSTS.indexOf(host)
+                    if (foundHost >= 0) hostIdx = foundHost
+                    finish(posterUrl)
+                }).fail(function () {
+                    tryHost()
+                })
+            } catch (e) {
+                tryHost()
+            }
+        }
+
+        tryHost()
+        return function () {
+            cancelled = true
+            if (request && typeof request.abort === 'function') {
+                try { request.abort() } catch (e) {}
+            }
+        }
     }
 
 
@@ -1432,6 +1554,7 @@
         var loaded = false
         var destroyed = false
         var anime = null
+        var posterLookupCancel = null
         var tmdbBusy = false
         var tmdbNet = null
         var tmdbLoading = false
@@ -1729,12 +1852,43 @@
             setupController()
         }
 
+        function loadHighQualityPoster(details) {
+            if (!details || !details.id) return
+            if (posterLookupCancel) {
+                try { posterLookupCancel() } catch (e) {}
+                posterLookupCancel = null
+            }
+
+            posterLookupCancel = fetchShikiPoster(details.id, function (url) {
+                posterLookupCancel = null
+                if (destroyed || !url || anime !== details) return
+
+                details.poster = details.poster || {}
+                details.poster.originalUrl = url
+                var candidates = posterCandidates(details, true)
+                if (!candidates.length) return
+
+                var image = html.find('.shiki-full__img').first()[0]
+                if (image) {
+                    image._shikiPosterCandidates = candidates
+                    image._shikiPosterIndex = 0
+                    image._shikiFallback = 0
+                    if (image.src !== candidates[0]) image.src = candidates[0]
+                }
+
+                if (Lampa.Background && typeof Lampa.Background.immediately === 'function') {
+                    try { Lampa.Background.immediately(candidates[0]) } catch (e) {}
+                }
+            })
+        }
+
         function loadDetails() {
             setLoader(true)
             shikiDetails(net, object.anime_id, function (res) {
                 setLoader(false)
                 loaded = true
                 renderDetails(res)
+                loadHighQualityPoster(res)
             }, function () {
                 setLoader(false)
                 Lampa.Noty.show(tr('shikimori_error'), { style: 'error' })
@@ -1761,6 +1915,10 @@
         this.destroy = function () {
             destroyed = true
             net.clear()
+            if (posterLookupCancel) {
+                try { posterLookupCancel() } catch (e) {}
+                posterLookupCancel = null
+            }
             for (var ni = 0; ni < secondaryNets.length; ni++) {
                 try { secondaryNets[ni].clear() } catch (e) {}
             }
@@ -1793,6 +1951,74 @@
                 page: 1
             })
         } catch (e) {}
+    }
+
+    // Resolve a TMDB card through ARM's TMDB -> MAL mapping, then match MAL IDs
+    // against Shikimori GraphQL results. MAL IDs are never passed as Shikimori IDs.
+    function matchShikiCandidatesByMalId(candidates, malIds, net, success, failure) {
+        if (!Array.isArray(candidates) || !candidates.length || !Array.isArray(malIds) || !malIds.length) {
+            if (typeof failure === 'function') failure()
+            return
+        }
+
+        var shikiIds = candidates.map(function (anime) {
+            return anime && anime.id ? String(anime.id) : ''
+        }).filter(Boolean)
+        if (!shikiIds.length || typeof $.ajax !== 'function') {
+            if (typeof failure === 'function') failure()
+            return
+        }
+
+        var hosts = getHostCandidates()
+        var hostIndex = 0
+        var query = 'query($ids: String!) { animes(ids: $ids, limit: 50) { id malId } }'
+
+        function tryHost() {
+            if (net && net._shikiCancelled) return
+            if (hostIndex >= hosts.length) {
+                if (typeof failure === 'function') failure()
+                return
+            }
+            var host = hosts[hostIndex++]
+            try {
+                $.ajax({
+                    url: host + '/api/graphql',
+                    method: 'POST',
+                    contentType: 'application/json; charset=utf-8',
+                    dataType: 'json',
+                    data: JSON.stringify({ query: query, variables: { ids: shikiIds.join(',') } }),
+                    timeout: 10000
+                }).done(function (response) {
+                    if (net && net._shikiCancelled) return
+                    var rows = response && response.data && Array.isArray(response.data.animes)
+                        ? response.data.animes
+                        : []
+                    var matched = null
+                    for (var i = 0; i < rows.length; i++) {
+                        var row = rows[i]
+                        if (!row || !row.id || !row.malId) continue
+                        if (malIds.indexOf(String(row.malId)) < 0) continue
+                        for (var j = 0; j < candidates.length; j++) {
+                            if (String(candidates[j].id) === String(row.id)) {
+                                matched = candidates[j]
+                                break
+                            }
+                        }
+                        if (matched) break
+                    }
+                    if (matched) {
+                        if (typeof success === 'function') success(matched)
+                    } else {
+                        tryHost()
+                    }
+                }).fail(function () {
+                    tryHost()
+                })
+            } catch (e) {
+                tryHost()
+            }
+        }
+        tryHost()
     }
 
     // ---------- open from a foreign TMDB/Lampa card ----------
@@ -1833,7 +2059,7 @@
 
         var modalNet = createNetwork(12000)
         var cancelled = false
-        var cancelLookup = null
+        var mappingRequest = null
 
         function stopLoading() {
             try { Lampa.Loading.stop() } catch (e) {}
@@ -1849,7 +2075,7 @@
             if (prevActivity && active && active !== prevActivity) {
                 cancelled = true
                 modalNet.clear()
-                if (cancelLookup) cancelLookup()
+                if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
                 stopLoading()
                 return false
             }
@@ -1859,7 +2085,7 @@
         function cancelSearch() {
             cancelled = true
             modalNet.clear()
-            if (cancelLookup) cancelLookup()
+            if (mappingRequest && typeof mappingRequest.abort === 'function') { try { mappingRequest.abort() } catch (e) {} }
             stopLoading()
             if (prevCtrl) {
                 try { Lampa.Controller.toggle(prevCtrl) } catch (e) {}
@@ -1912,14 +2138,30 @@
             }
         }
 
-        function searchByBaseTitle() {
+        function finishWithMappedAnime(anime) {
+            if (!canContinue() || !anime || !anime.id) return
+            shikiDetails(modalNet, anime.id, function (details) {
+                if (!canContinue()) return
+                stopLoading()
+                pushDetails(details)
+            }, function () {
+                if (canContinue()) searchByBaseTitle()
+            })
+        }
+
+        function searchByBaseTitle(malIds) {
             var gathered = []
             var seen = {}
-
             function tryQuery(index) {
                 if (!canContinue()) return
                 if (index >= queries.length) {
-                    showResults(gathered)
+                    if (malIds && malIds.length && gathered.length) {
+                        matchShikiCandidatesByMalId(gathered, malIds, modalNet, finishWithMappedAnime, function () {
+                            if (canContinue()) showResults(gathered)
+                        })
+                    } else {
+                        showResults(gathered)
+                    }
                     return
                 }
                 shikiSearch(modalNet, queries[index], 1, function (animes) {
@@ -1936,20 +2178,45 @@
                     if (canContinue()) tryQuery(index + 1)
                 })
             }
-
             tryQuery(0)
         }
 
-        // Prefer the exact TMDB -> MAL/Shikimori mapping used by the working reference.
-        // Fall back to a cleaned title search only when the mapping is absent.
-        cancelLookup = lookupShikiByTmdbId(card.id, function (anime) {
-            if (!canContinue()) return
-            modalNet.clear()
-            stopLoading()
-            pushDetails(anime)
-        }, function () {
-            if (canContinue()) searchByBaseTitle()
-        })
+        function searchWithTmdbMapping() {
+            if (!card.id || typeof $.ajax !== 'function') {
+                searchByBaseTitle([])
+                return
+            }
+            try {
+                mappingRequest = $.ajax({
+                    url: 'https://arm.haglund.dev/api/v2/themoviedb?id=' + encodeURIComponent(card.id),
+                    method: 'GET',
+                    dataType: 'json',
+                    timeout: 10000
+                })
+                mappingRequest.done(function (mapped) {
+                    if (!canContinue()) return
+                    var malIds = []
+                    function addMalId(value) {
+                        var id = String(value || '').trim()
+                        if (/^\d+$/.test(id) && malIds.indexOf(id) < 0) malIds.push(id)
+                    }
+                    if (Array.isArray(mapped)) {
+                        mapped.forEach(function (item) { if (item) addMalId(item.myanimelist) })
+                    } else if (mapped && typeof mapped === 'object') {
+                        addMalId(mapped.myanimelist)
+                    }
+                    searchByBaseTitle(malIds)
+                }).fail(function () {
+                    if (canContinue()) searchByBaseTitle([])
+                })
+            } catch (e) {
+                searchByBaseTitle([])
+            }
+        }
+
+        // Lampa supplies a TMDB ID. Resolve it to MAL first, then compare that MAL ID
+        // with Shikimori's malId field; only the actual Shikimori ID is used for details.
+        searchWithTmdbMapping()
     }
 
     // ---------- menu item ----------
