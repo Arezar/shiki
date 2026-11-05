@@ -105,7 +105,7 @@ const Lampa = {
   Listener: { follow() {}, remove() {} },
   Activity: { push() {}, active() { return null; } },
   Noty: { show() {} },
-  Select: { show() {} },
+  Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
   Controller: {
     toggle() {}, own: () => true, add() {}, collectionSet() {}, collectionFocus() {}
@@ -357,6 +357,26 @@ function testRestoredFiltersAreStableAcrossPages() {
   storage.lme_shikimori_filters_v1 = {};
 }
 
+function testResetFiltersClearsCheckboxState() {
+  storage.lme_shikimori_filters_v1 = { kind: 'tv', status: 'ongoing', sort: 'ranked', genre: '1,2' };
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
+  assert.ok(searchButton && searchButton.handlers['hover:enter']);
+  searchButton.handlers['hover:enter']();
+  const filterMenu = selectCalls[selectCalls.length - 1];
+  filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
+  const resetMenu = selectCalls[selectCalls.length - 1];
+  const statusFilter = resetMenu.items.find(item => item.title === 'Статус выхода');
+  assert.ok(statusFilter.items.every(item => item.selected === false && item.checked === false));
+  const typeFilter = resetMenu.items.find(item => item.title === 'Тип аниме');
+  assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
+  component.destroy();
+  storage.lme_shikimori_filters_v1 = {};
+}
+
 function testPaginationDeduplicationAndDestroy() {
   ajaxCalls.length = 0;
   const component = new api.Component({ page: 1 });
@@ -431,8 +451,9 @@ testUserRateNormalization();
 testV1AccountRateNormalization();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
+testResetFiltersClearsCheckboxState();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testLegacyCardFallbackSafety();
 
-process.stdout.write('Shikimori smoke tests: PASS (11 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (12 groups)\n');
