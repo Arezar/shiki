@@ -23,7 +23,10 @@ source = source.replace(startMarker, exportForTests);
 
 const ajaxCalls = [];
 const jqueryInstances = [];
-const storage = {};
+const storage = {
+  lme_shikimori_account_v1: { access_token: 'legacy-token', refresh_token: 'legacy-refresh', client_secret: 'legacy-secret' },
+  lme_shikimori_oauth_state: 'legacy-state'
+};
 let lastTemplate = null;
 let emptyCreated = 0;
 const scrollInstances = [];
@@ -353,6 +356,8 @@ function testEmptyRestoredPage() {
 }
 
 function testNoAccountAuthorizationRemains() {
+  assert.deepEqual(storage.lme_shikimori_account_v1, {}, 'legacy OAuth credentials and tokens must be cleared');
+  assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
   assert.doesNotMatch(source, /oauth|client_secret|refresh_token|user_rates|whoami/i);
   assert.doesNotMatch(source, /accountMenu|connectShikimori|disconnectShikimori|authenticatedRequest|accountList|Shikimori__account/);
   assert.doesNotMatch(source, /Изменить запись в Shikimori|Мой список Shikimori/);
