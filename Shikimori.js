@@ -550,7 +550,7 @@
         object.page = page;
         hasMore = result.length >= pageSize;
 
-        if (page === 1 && result.length === 0) {
+        if (result.length === 0 && items.length === 0) {
           self.empty();
           return;
         }
@@ -566,7 +566,7 @@
           ? network.errorDecode(error, error && error.statusText)
           : (error && error.message) || 'Ошибка сети';
 
-        if (page === 1) {
+        if (!items.length) {
           self.empty();
           Lampa.Noty.show('Не удалось загрузить каталог: ' + escapeHtml(message));
         } else {
