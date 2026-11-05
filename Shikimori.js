@@ -439,37 +439,52 @@
         Lampa.Noty.show('Код авторизации или state не совпадает. Повторите подключение и вставьте полный URL.');
         return;
       }
-      // OAuth state is single-use: consume it before exchanging the authorization code.
-      Lampa.Storage.set(OAUTH_STATE_KEY, '');
-
-      requestOAuthToken({
-        grant_type: 'authorization_code',
-        client_id: config.client_id,
-        client_secret: config.client_secret,
-        code: parsed.code,
-        redirect_uri: config.redirect_uri
-      }, function (response) {
-        try {
-          saveTokenResponse(response);
+      Lampa.Select.show({
+        title: 'Подтвердить подключение Shikimori',
+        items: [
+          { title: 'Обменять код и подключить аккаунт', confirmOAuth: true },
+          { title: 'Отмена', cancelOAuth: true }
+        ],
+        onBack: function () {
           Lampa.Storage.set(OAUTH_STATE_KEY, '');
-          getShikimoriIdentity(function (user) {
-            Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
-            Lampa.Activity.push({
-              url: '',
-              title: 'Мой список Shikimori',
-              component: 'LMEShikimori',
-              page: 1,
-              accountList: true
-            });
-          }, function (error) {
-            Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
+        },
+        onSelect: function (choice) {
+          if (!choice || !choice.confirmOAuth) {
+            Lampa.Storage.set(OAUTH_STATE_KEY, '');
+            return;
+          }
+          // OAuth state is single-use: consume it before exchanging the authorization code.
+          Lampa.Storage.set(OAUTH_STATE_KEY, '');
+          requestOAuthToken({
+            grant_type: 'authorization_code',
+            client_id: config.client_id,
+            client_secret: config.client_secret,
+            code: parsed.code,
+            redirect_uri: config.redirect_uri
+          }, function (response) {
+            try {
+              saveTokenResponse(response);
+              Lampa.Storage.set(OAUTH_STATE_KEY, '');
+              getShikimoriIdentity(function (user) {
+                Lampa.Noty.show('Аккаунт Shikimori подключён: ' + escapeHtml(user.nickname || user.name || user.id));
+                Lampa.Activity.push({
+                  url: '',
+                  title: 'Мой список Shikimori',
+                  component: 'LMEShikimori',
+                  page: 1,
+                  accountList: true
+                });
+              }, function (error) {
+                Lampa.Noty.show('Токен получен, но профиль не загрузился: ' + escapeHtml(error && error.message || 'ошибка API'));
+              });
+            } catch (exception) {
+              Lampa.Noty.show(exception.message);
+            }
+          }, function (xhr, status, message) {
+            var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
+            Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
           });
-        } catch (exception) {
-          Lampa.Noty.show(exception.message);
         }
-      }, function (xhr, status, message) {
-        var text = xhr && xhr.responseJSON && xhr.responseJSON.error_description;
-        Lampa.Noty.show('OAuth Shikimori: ' + escapeHtml(text || message || status || 'ошибка обмена кода'));
       });
     });
   }
