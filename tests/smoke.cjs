@@ -32,6 +32,8 @@ let lastTemplate = null;
 let emptyCreated = 0;
 const scrollInstances = [];
 const selectCalls = [];
+const controllerCollections = {};
+let lastCollectionFocus = null;
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -108,7 +110,13 @@ const Lampa = {
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
   Controller: {
-    toggle() {}, own: () => true, add() {}, collectionSet() {}, collectionFocus() {}
+    toggle(name) {
+      if (name === 'content' && controllerCollections.content) controllerCollections.content.toggle();
+    },
+    own: () => true,
+    add(name, options) { controllerCollections[name] = options; },
+    collectionSet() {},
+    collectionFocus(focus) { lastCollectionFocus = focus; }
   },
   Utils: { protocol: () => 'https://' },
   Arrays: { destroy() {} },
@@ -321,6 +329,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   component.activity = { loader() {}, toggle() {} };
   component.create();
 
+  component.start();
   const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
   assert.ok(searchButton && searchButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
   searchButton.handlers['hover:enter']();
@@ -338,7 +347,10 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.ok(groupMenu.items.some(item => item.title === 'Минимальная оценка Shikimori'));
   groupMenu.onBack();
 
-  assert.equal(selectCalls[selectCalls.length - 1].title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  const returnedRoot = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  returnedRoot.onBack();
+  assert.equal(lastCollectionFocus, searchButton, 'Back out of filters should restore focus to the Filters button');
   component.destroy();
 }
 
