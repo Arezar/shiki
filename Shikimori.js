@@ -2138,34 +2138,6 @@
             }
         }
 
-        function searchByBaseTitle() {
-            var gathered = []
-            var seen = {}
-
-            function tryQuery(index) {
-                if (!canContinue()) return
-                if (index >= queries.length) {
-                    showResults(gathered)
-                    return
-                }
-                shikiSearch(modalNet, queries[index], 1, function (animes) {
-                    if (!canContinue()) return
-                    if (Array.isArray(animes)) {
-                        animes.forEach(function (anime) {
-                            if (!anime || !anime.id || seen[String(anime.id)]) return
-                            seen[String(anime.id)] = true
-                            gathered.push(anime)
-                        })
-                    }
-                    tryQuery(index + 1)
-                }, function () {
-                    if (canContinue()) tryQuery(index + 1)
-                })
-            }
-
-            tryQuery(0)
-        }
-
         function finishWithMappedAnime(anime) {
             if (!canContinue() || !anime || !anime.id) return
             shikiDetails(modalNet, anime.id, function (details) {
@@ -2226,7 +2198,7 @@
                     var malIds = []
                     function addMalId(value) {
                         var id = String(value || '').trim()
-                        if (/^\\d+$/.test(id) && malIds.indexOf(id) < 0) malIds.push(id)
+                        if (/^\d+$/.test(id) && malIds.indexOf(id) < 0) malIds.push(id)
                     }
                     if (Array.isArray(mapped)) {
                         mapped.forEach(function (item) { if (item) addMalId(item.myanimelist) })
