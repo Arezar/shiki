@@ -488,8 +488,8 @@
         }
 
         self.build(result);
-        _this.activity.loader(false);
-        _this.activity.toggle();
+        self.activity.loader(false);
+        self.activity.toggle();
       }, function (error) {
         if (!inited) return;
 
@@ -499,7 +499,7 @@
           : (error && error.message) || 'Ошибка сети';
 
         if (page === 1) {
-          _this.empty();
+          self.empty();
           Lampa.Noty.show('Не удалось загрузить каталог: ' + message);
         } else {
           Lampa.Noty.show('Не удалось загрузить следующую страницу: ' + message);
