@@ -885,11 +885,13 @@
       retryButton.on('hover:enter', function () {
         if (!inited || loading) return;
         clearRetry();
+        last = items.length ? items[items.length - 1].render() : false;
         self.activity.loader(true);
         loadPage(page, true);
       });
       body.prepend(retryButton);
       body.prepend(retryStatus);
+      last = retryButton;
       self.activity.loader(false);
       self.activity.toggle();
     }
@@ -980,7 +982,11 @@
       if (headerReady) return;
       headerReady = true;
 
-      head.find('.LMEShikimori__search').off('hover:enter').on('hover:enter', mainFilterMenu);
+      var searchButton = head.find('.LMEShikimori__search');
+      searchButton.off('hover:enter').on('hover:enter', function () {
+        last = searchButton;
+        mainFilterMenu();
+      });
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
       });
