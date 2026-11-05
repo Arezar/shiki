@@ -1399,6 +1399,30 @@
       loadPage(1);
     }
 
+    function replaceCatalogueCard(anime, index) {
+      if (index < 0 || index >= items.length) return;
+      var previous = items[index];
+      var previousElement = previous && previous.render ? previous.render() : null;
+      var replacement = new Card(anime, userLang, {
+        long: function () { openRateEditor(anime); },
+        enter: function () { lookupNetwork.clear(); API.search(anime, lookupNetwork); }
+      });
+      replacement.dataId = String(anime.id);
+      var nextElement = replacement.render();
+      if (previousElement && previousElement.parentNode && typeof previousElement.parentNode.replaceChild === 'function') {
+        previousElement.parentNode.replaceChild(nextElement, previousElement);
+      } else if (previousElement && typeof previousElement.replaceWith === 'function') {
+        previousElement.replaceWith(nextElement);
+      } else if (body.children && typeof body.children === 'function') {
+        var child = body.children().eq(index);
+        if (child && typeof child.replaceWith === 'function') child.replaceWith(nextElement);
+      }
+      if (previous && typeof previous.destroy === 'function') previous.destroy();
+      items[index] = replacement;
+      if (last === previousElement) last = nextElement;
+      scroll.update(nextElement, true);
+    }
+
     function saveOrUpdateRate(anime, rate, changes) {
       saveUserRate(anime, rate, changes, function (result) {
         var normalized = result && result.user_rate ? result.user_rate : result;
@@ -1412,16 +1436,7 @@
         if (accountList) reloadCurrent();
         else {
           var currentIndex = items.findIndex(function (item) { return item.dataId === String(anime.id); });
-          if (currentIndex !== -1) {
-            items[currentIndex].destroy();
-            var replacement = new Card(anime, userLang, {
-              long: function () { openRateEditor(anime); },
-              enter: function () { lookupNetwork.clear(); API.search(anime, lookupNetwork); }
-            });
-            replacement.dataId = String(anime.id);
-            items[currentIndex] = replacement;
-            if (body.nodes && body.nodes[currentIndex]) body.nodes[currentIndex] = replacement.render();
-          }
+          if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
         }
       }, function (xhr, status, message) {
         var apiMessage = xhr && xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message);
@@ -1494,16 +1509,7 @@
                 if (accountList) reloadCurrent();
                 else {
                   var currentIndex = items.findIndex(function (item) { return item.dataId === String(anime.id); });
-                  if (currentIndex !== -1) {
-                    items[currentIndex].destroy();
-                    var replacement = new Card(anime, userLang, {
-                      long: function () { openRateEditor(anime); },
-                      enter: function () { lookupNetwork.clear(); API.search(anime, lookupNetwork); }
-                    });
-                    replacement.dataId = String(anime.id);
-                    items[currentIndex] = replacement;
-                    if (body.nodes && body.nodes[currentIndex]) body.nodes[currentIndex] = replacement.render();
-                  }
+                  if (currentIndex !== -1) replaceCatalogueCard(anime, currentIndex);
                 }
               }, function (xhr, status, message) {
                 Lampa.Noty.show('Не удалось удалить запись: ' + escapeHtml(message || status || 'ошибка API'));
