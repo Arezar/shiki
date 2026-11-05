@@ -335,30 +335,53 @@
 
   function editOAuthSettings(done) {
     var config = readOAuthConfig();
-    function prompt(title, key, next) {
-      Lampa.Input.edit({
-        title: title,
-        value: config[key],
-        password: key === 'client_secret',
-        free: true,
-        nosave: true
-      }, function (value) {
-        config[key] = String(value || '').trim();
-        next();
+    var fields = [
+      { key: 'client_id', title: 'Shikimori OAuth — Client ID' },
+      { key: 'client_secret', title: 'Shikimori OAuth — Client Secret', password: true },
+      { key: 'redirect_uri', title: 'Shikimori OAuth — Redirect URI' }
+    ];
+
+    function menu() {
+      Lampa.Select.show({
+        title: 'Настройки OAuth Shikimori',
+        items: [
+          { title: 'Client ID', subtitle: config.client_id ? 'Настроен' : 'Не задан', field: fields[0] },
+          { title: 'Client Secret', subtitle: config.client_secret ? 'Настроен' : 'Не задан', field: fields[1] },
+          { title: 'Redirect URI', subtitle: config.redirect_uri || 'Не задан', field: fields[2] },
+          { title: 'Сохранить настройки', saveOAuth: true }
+        ],
+        onBack: function () {},
+        onSelect: function (chosen) {
+          if (chosen && chosen.saveOAuth) {
+            if (!config.client_id || !config.client_secret || !config.redirect_uri) {
+              Lampa.Noty.show('Заполните Client ID, Client Secret и Redirect URI');
+              return menu();
+            }
+            saveOAuthConfig(config);
+            Lampa.Noty.show('Параметры OAuth сохранены локально на этом устройстве');
+            if (typeof done === 'function') done(config);
+            return;
+          }
+          if (!chosen || !chosen.field || !Lampa.Input || typeof Lampa.Input.edit !== 'function') return;
+          var field = chosen.field;
+          Lampa.Input.edit({
+            title: field.title,
+            value: config[field.key],
+            password: !!field.password,
+            free: true,
+            nosave: true
+          }, function (value) {
+            config[field.key] = String(value || '').trim();
+            // Lampa.Input.edit invokes its callback on both Enter and Back.
+            // Returning to this menu makes Back a harmless cancel instead of
+            // accidentally advancing through a chain of credential prompts.
+            menu();
+          });
+        }
       });
     }
-    prompt('Shikimori OAuth — Client ID', 'client_id', function () {
-      if (!config.client_id) return;
-      prompt('Shikimori OAuth — Client Secret', 'client_secret', function () {
-        if (!config.client_secret) return;
-        prompt('Shikimori OAuth — Redirect URI (точно как в приложении Shikimori)', 'redirect_uri', function () {
-          if (!config.redirect_uri) return;
-          saveOAuthConfig(config);
-          Lampa.Noty.show('Параметры OAuth сохранены локально на этом устройстве');
-          if (typeof done === 'function') done(config);
-        });
-      });
-    });
+
+    menu();
   }
 
   function connectShikimori() {
