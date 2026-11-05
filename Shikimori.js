@@ -26,7 +26,17 @@
     var defaultTimeout = timeout || 15000;
 
     function track(options) {
-      var xhr = $.ajax(options);
+      var requestOptions = $.extend({}, options);
+      var onError = requestOptions.error;
+
+      requestOptions.error = function (xhr, status, error) {
+        // Explicit clear() cancellation is lifecycle cleanup, not a failed request.
+        // Do not let an aborted lookup start a fallback chain after the screen closes.
+        if (status === 'abort' || (xhr && xhr.statusText === 'abort')) return;
+        if (typeof onError === 'function') onError(xhr, status, error);
+      };
+
+      var xhr = $.ajax(requestOptions);
       if (xhr && typeof xhr.always === 'function') {
         active.push(xhr);
         xhr.always(function () {
