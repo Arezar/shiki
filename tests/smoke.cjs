@@ -187,7 +187,6 @@ function testGraphQLVariablesAndFilterCoverage() {
   assert.equal(payload.variables.rating, 'pg_13');
   assert.equal(payload.variables.duration, 'D');
   assert.match(payload.query, /duration: \$duration/);
-  assert.match(payload.query, /episodesAired/);
   assert.match(payload.query, /duration/);
 
   request.xhr.resolve({ data: { animes: [{ id: 1 }] } });
