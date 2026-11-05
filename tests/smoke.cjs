@@ -33,6 +33,7 @@ let emptyCreated = 0;
 const scrollInstances = [];
 const selectCalls = [];
 const controllerCollections = {};
+const textUpdates = [];
 let lastCollectionFocus = null;
 
 function FakeJQuery(selector) {
@@ -62,7 +63,13 @@ FakeJQuery.prototype.remove = function () {
   return this;
 };
 FakeJQuery.prototype.empty = function () { this.nodes = []; return this; };
-FakeJQuery.prototype.text = function (value) { if (arguments.length) this.textContent = String(value); return this; };
+FakeJQuery.prototype.text = function (value) {
+  if (arguments.length) {
+    this.textContent = String(value);
+    textUpdates.push({ selector: this.selector, text: this.textContent });
+  }
+  return this;
+};
 FakeJQuery.prototype.prepend = function (value) {
   if (value instanceof FakeJQuery) value.parent = this;
   this.nodes.unshift(value);
@@ -430,7 +437,7 @@ function testCatalogueRetryAfterInitialFailure() {
   const firstRequest = graphqlRequests()[0];
   assert.ok(firstRequest, 'initial catalogue request should start');
   const initialLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
-  assert.ok(initialLoading && /Загружается каталог/.test(initialLoading.textContent), 'initial load should show visible progress text');
+  assert.ok(initialLoading && textUpdates.some(item => item.selector === '.LMEShikimori__loading-info' && /Загружается каталог/.test(item.text)), 'initial load should show visible progress text');
   firstRequest.xhr.reject(503, { message: 'Service unavailable' });
   assert.equal(initialLoading.removed, true, 'loading status should be removed after a request failure');
 
@@ -442,7 +449,7 @@ function testCatalogueRetryAfterInitialFailure() {
   assert.equal(JSON.parse(retryRequest.options.data).variables.page, 1, 'retry should request the failed page');
   assert.equal(retry.removed, true, 'retry control should disappear once retry starts');
   const retryLoading = jqueryInstances.filter(item => item.selector === '.LMEShikimori__loading-info').pop();
-  assert.ok(retryLoading && /Повторная загрузка/.test(retryLoading.textContent), 'retry should expose a visible loading status');
+  assert.ok(retryLoading && textUpdates.some(item => item.selector === '.LMEShikimori__loading-info' && /Повторная загрузка/.test(item.text)), 'retry should expose a visible loading status');
 
   retryRequest.xhr.resolve({ data: { animes: [{ id: 9001, name: 'Retry success' }] } });
   assert.equal(retryLoading.removed, true, 'loading status should disappear after a successful retry');
