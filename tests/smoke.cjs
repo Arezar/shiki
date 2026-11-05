@@ -362,6 +362,11 @@ function testResetFiltersClearsCheckboxState() {
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
+  const genresRequest = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/genres').pop();
+  genresRequest.xhr.resolve([
+    { id: 1, entry_type: 'Anime', russian: 'Жанр один' },
+    { id: 2, entry_type: 'Anime', russian: 'Жанр два' }
+  ]);
 
   const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
   assert.ok(searchButton && searchButton.handlers['hover:enter']);
@@ -373,6 +378,8 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(statusFilter.items.every(item => item.selected === false && item.checked === false));
   const typeFilter = resetMenu.items.find(item => item.title === 'Тип аниме');
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
+  const genreFilter = resetMenu.items.find(item => item.title === 'Жанры (можно несколько)');
+  assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }
