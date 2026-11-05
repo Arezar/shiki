@@ -1651,7 +1651,7 @@
     window.plugin_shikimori_ready = true;
     var manifest = {
       type: "other",
-      version: "0.2",
+      version: "0.3",
       name: "LME Shikimori",
       description: "Shikimori catalogue, native Lampa cards, filters and OAuth account sync",
       component: "LMEShikimori"
