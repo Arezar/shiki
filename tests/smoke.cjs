@@ -201,6 +201,34 @@ function testOAuthRedirectParsing() {
   const raw = api.parseOAuthRedirect('one-time-code');
   assert.equal(raw.code, 'one-time-code');
   assert.equal(raw.state, '');
+  assert.deepEqual(api.parseOAuthRedirect('https://example.test/?code=%E0%A4%A&state=x'), { code: '', state: '' });
+}
+
+function testConcurrentTokenRefresh() {
+  storage.lme_shikimori_account_v1 = {
+    client_id: 'client-id',
+    client_secret: 'client-secret',
+    refresh_token: 'old-refresh'
+  };
+
+  const before = ajaxCalls.length;
+  const received = [];
+  const errors = [];
+  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
+  api.refreshAccessToken(token => received.push(token), error => errors.push(error));
+
+  const requests = ajaxCalls.slice(before).filter(item => item.options.url === 'https://shikimori.io/oauth/token');
+  assert.equal(requests.length, 1, 'parallel callers must share a single refresh request');
+  requests[0].xhr.resolve({
+    access_token: 'new-access',
+    refresh_token: 'new-refresh',
+    expires_in: 86400
+  });
+
+  assert.deepEqual(received, ['new-access', 'new-access']);
+  assert.equal(errors.length, 0);
+  assert.equal(storage.lme_shikimori_account_v1.refresh_token, 'new-refresh');
+  assert.equal(storage.lme_shikimori_account_v1.access_token, 'new-access');
 }
 
 function testUserRateNormalization() {
@@ -241,6 +269,7 @@ function testLegacyCardFallbackSafety() {
 testRequestCancellation();
 testGraphQLVariablesAndFilterCoverage();
 testOAuthRedirectParsing();
+testConcurrentTokenRefresh();
 testUserRateNormalization();
 testLegacyCardFallbackSafety();
 
