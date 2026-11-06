@@ -31,6 +31,7 @@ let lastTemplate = null;
 let emptyCreated = 0;
 const scrollInstances = [];
 const selectCalls = [];
+const layerVisibleCalls = [];
 const controllerCollections = {};
 let lastCollectionFocus = null;
 
@@ -123,6 +124,7 @@ const Lampa = {
   Noty: { show() {} },
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
+  Layer: { visible(element) { layerVisibleCalls.push(element); } },
   Controller: {
     toggle(name) {
       if (name === 'content' && controllerCollections.content) controllerCollections.content.toggle();
@@ -386,8 +388,11 @@ function testPaginationDeduplicationAndDestroy() {
   const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
   const firstPage = graphqlRequests()[0];
   const firstBatch = Array.from({ length: 36 }, (_, index) => ({ id: index + 1, name: 'Anime ' + (index + 1) }));
+  const visibleCallsBeforeFirstPage = layerVisibleCalls.length;
   firstPage.xhr.resolve({ data: { animes: firstBatch } });
   assert.equal(body.nodes.length, 36);
+  assert.ok(layerVisibleCalls.length > visibleCallsBeforeFirstPage, 'new catalogue cards should trigger Lampa lazy-image visibility processing immediately');
+  assert.equal(layerVisibleCalls[layerVisibleCalls.length - 1].selector, 'scroll', 'visibility processing should target the catalogue scroll container');
 
   scrollInstances[scrollInstances.length - 1].onEnd();
   scrollInstances[scrollInstances.length - 1].onEnd();
