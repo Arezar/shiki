@@ -530,6 +530,8 @@
     var retryButton = null;
     var retryStatus = null;
     var loadingStatus = null;
+    var genresLoaded = false;
+    var genresLoadFailed = false;
 
     function getSeason(date) {
       var month = date.getMonth();
@@ -723,6 +725,8 @@
 
     function loadGenres() {
       function ready(response) {
+        genresLoaded = true;
+        genresLoadFailed = false;
         runtimeCache.genres = (Array.isArray(response) ? response : []).filter(function (item) {
           return item && item.entry_type === 'Anime';
         }).map(function (item) {
@@ -743,6 +747,8 @@
             if (!inited) return;
             if (attempts++ < 2) requestGenres();
             else {
+              genresLoaded = true;
+              genresLoadFailed = true;
               console.warn('Shikimori: не удалось загрузить жанры', error);
               Lampa.Noty.show('Не удалось загрузить жанры Shikimori. Повторите открытие фильтров позже.');
             }
@@ -801,7 +807,15 @@
         : filters.genres.items;
 
       if (!visibleItems.length) {
-        Lampa.Noty.show('Жанры не найдены');
+        if (!genresLoaded) {
+          Lampa.Noty.show('Список жанров ещё загружается. Попробуйте немного позже.');
+        }
+        else if (genresLoadFailed) {
+          Lampa.Noty.show('Не удалось загрузить список жанров. Закройте и откройте каталог повторно.');
+        }
+        else {
+          Lampa.Noty.show('Жанры не найдены');
+        }
         onReturn();
         return;
       }
