@@ -37,6 +37,7 @@ let lastCollectionFocus = null;
 let activityBackwardCalls = 0;
 const activityPushCalls = [];
 let lastInputEdit = null;
+const notyCalls = [];
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -125,7 +126,7 @@ const Lampa = {
   Listener: { follow() {}, remove() {} },
   Activity: { push(params) { activityPushCalls.push(params); }, active() { return null; }, backward() { activityBackwardCalls++; } },
   Input: { edit(options, callback) { lastInputEdit = { options, callback }; } },
-  Noty: { show() {} },
+  Noty: { show(message) { notyCalls.push(message); } },
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
   Layer: { visible(element) { layerVisibleCalls.push(element); } },
@@ -356,6 +357,35 @@ function testResetFiltersClearsCheckboxState() {
   storage.lme_shikimori_filters_v1 = {};
 }
 
+function testGenreFilterHandlesSlowInitialLoad() {
+  ajaxCalls.length = 0;
+  notyCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
+  filtersButton.handlers['hover:enter']();
+  const rootMenu = selectCalls[selectCalls.length - 1];
+  rootMenu.onSelect(rootMenu.items.find(item => item.group === 'basic'));
+  const basicMenu = selectCalls[selectCalls.length - 1];
+  basicMenu.onSelect(basicMenu.items.find(item => item.title === 'Жанры'));
+
+  assert.match(notyCalls[notyCalls.length - 1], /ещё загружается/, 'opening genres before the API response should not report a false empty result');
+
+  const genresRequest = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/genres').pop();
+  genresRequest.xhr.resolve([
+    { id: 1, entry_type: 'Anime', russian: 'Жанр один' },
+    { id: 2, entry_type: 'Anime', russian: 'Жанр два' }
+  ]);
+
+  const returnedGroup = selectCalls[selectCalls.length - 1];
+  returnedGroup.onSelect(returnedGroup.items.find(item => item.title === 'Жанры'));
+  const loadedGenres = selectCalls[selectCalls.length - 1];
+  assert.equal(loadedGenres.items.length, 2, 'genre choices should become available after the request completes');
+  component.destroy();
+}
+
 function testTvFriendlyFilterGroupsAndBackNavigation() {
   ajaxCalls.length = 0;
   storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'ranked' };
@@ -583,6 +613,7 @@ testGraphQLVariablesAndFilterCoverage();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testResetFiltersClearsCheckboxState();
+testGenreFilterHandlesSlowInitialLoad();
 testTvFriendlyFilterGroupsAndBackNavigation();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
