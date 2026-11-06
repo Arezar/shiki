@@ -1028,6 +1028,11 @@
         items.push(card);
       });
       scroll.minus();
+      // Lampa.Scroll normally activates lazy-loaded card images after a scroll event.
+      // The first catalogue page has not scrolled yet, so explicitly process visible layers.
+      if (Lampa.Layer && typeof Lampa.Layer.visible === 'function') {
+        Lampa.Layer.visible(scroll.render(true));
+      }
     };
 
     this.build = function (result) {
