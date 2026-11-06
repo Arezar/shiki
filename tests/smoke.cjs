@@ -383,7 +383,9 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
   assert.equal(rootMenu.items[0].title, 'Показать результаты');
   assert.equal(rootMenu.items[0].subtitle, 'Активных фильтров: 1');
-  assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /Сериал/, 'group summary should show active selections');
+  assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /TV Series/, 'group summary should show the standard anime-type label');
+  assert.match(source, /title: 'OVA', code: 'ova'/, 'OVA should keep its standard label without an explanation');
+  assert.match(source, /title: 'ONA', code: 'ona'/, 'ONA should keep its standard label without an explanation');
   assert.ok(!rootMenu.items.some(item => item.searchAnimes), 'title search must stay outside the filters menu');
   assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
   const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
