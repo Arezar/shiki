@@ -364,6 +364,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.match(source, /Главная/);
   assert.match(source, /Поиск по названию/);
   assert.match(source, />Фильтры</);
+  const filterMenusBeforeSearch = selectCalls.length;
   titleSearchButton.handlers['hover:enter']();
   assert.ok(lastInputEdit, 'title search button should open the text input directly');
   assert.equal(lastInputEdit.options.title, 'Поиск аниме на Shikimori');
@@ -371,7 +372,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   lastInputEdit.callback('Cowboy Bebop');
   assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
-  assert.equal(selectCalls.length, 0, 'title search should not open the filter menu');
+  assert.equal(selectCalls.length, filterMenusBeforeSearch, 'title search should not open the filter menu');
   filtersButton.handlers['hover:enter']();
 
   const rootMenu = selectCalls[selectCalls.length - 1];
