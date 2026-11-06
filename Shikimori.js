@@ -853,7 +853,6 @@
       });
       filterState.sort = 'ranked';
       filterState.genre = '';
-      filterState.search = '';
       selectedSingle(filters.sort, 'ranked');
       Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
