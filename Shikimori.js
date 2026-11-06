@@ -573,8 +573,8 @@
           { title: 'Любой тип', code: '' },
           { title: 'Сериал', code: 'tv' },
           { title: 'Фильм', code: 'movie' },
-          { title: 'OVA', code: 'ova' },
-          { title: 'ONA', code: 'ona' },
+          { title: 'OVA — выпуск на видео', code: 'ova' },
+          { title: 'ONA — интернет-сериал', code: 'ona' },
           { title: 'Спецвыпуск', code: 'special' },
           { title: 'ТВ-спецвыпуск', code: 'tv_special' },
           { title: 'Музыкальное видео', code: 'music' },
@@ -674,6 +674,33 @@
         if (item.selected) titles.push(item.title);
       });
       filter.subtitle = titles.length ? titles.join(', ') : 'Не выбрано';
+    }
+
+    function filterSummary(key) {
+      var filter = filters[key];
+      if (!filter) return '';
+      var selected = filter.items.filter(function (item) { return item.selected; });
+      if (key === 'genres') {
+        var names = selected.map(function (item) { return item.title; });
+        if (!names.length) return 'Не выбрано';
+        return names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '');
+      }
+      var choice = selected[0];
+      if (!choice || choice.code === '') return 'Не выбрано';
+      return choice.title;
+    }
+
+    function groupSummary(keys) {
+      var values = keys.map(filterSummary).filter(function (value) {
+        return value && value !== 'Не выбрано';
+      });
+      return values.length ? values.join(' · ') : 'Не выбрано';
+    }
+
+    function activeFilterCount() {
+      return ['genres', 'type', 'status', 'score', 'rating', 'duration', 'seasons'].filter(function (key) {
+        return filterSummary(key) !== 'Не выбрано';
+      }).length;
     }
 
     function selectedSingle(filter, value) {
@@ -816,7 +843,8 @@
     }
 
     function resetFilters() {
-      filterState = {};
+      var currentSearch = String(filterState.search || '');
+      filterState = { search: currentSearch };
       Object.keys(filters).forEach(function (key) {
         filters[key].items.forEach(function (item) {
           item.selected = false;
@@ -827,7 +855,7 @@
       filterState.genre = '';
       filterState.search = '';
       selectedSingle(filters.sort, 'ranked');
-      Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: 'ranked' });
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
     }
 
@@ -835,11 +863,11 @@
       Lampa.Select.show({
         title: 'Фильтры Shikimori',
         items: [
-          { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
-          { title: 'Основные параметры', subtitle: 'Жанры, тип и статус', group: 'basic' },
-          { title: 'Оценки и формат', subtitle: 'Оценка, возрастной рейтинг и длительность', group: 'quality' },
-          { title: 'Сезон и сортировка', subtitle: 'Период выхода и порядок каталога', group: 'period' },
-          { title: 'Сбросить все фильтры', resetFilters: true }
+          { title: 'Показать результаты', subtitle: 'Активных фильтров: ' + activeFilterCount(), applyFilters: true },
+          { title: 'Жанры, тип и статус', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
+          { title: 'Оценка, рейтинг и длительность', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
+          { title: 'Сезон и сортировка', subtitle: groupSummary(['seasons', 'sort']), group: 'period' },
+          { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
