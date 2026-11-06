@@ -120,7 +120,7 @@ const Lampa = {
   },
   Component: { add() {} },
   Listener: { follow() {}, remove() {} },
-  Activity: { push() {}, active() { return null; } },
+  Activity: { push() {}, active() { return null; }, backward() { activityBackwardCalls++; } },
   Noty: { show() {} },
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
