@@ -345,6 +345,7 @@ function testResetFiltersClearsCheckboxState() {
 
 function testTvFriendlyFilterGroupsAndBackNavigation() {
   ajaxCalls.length = 0;
+  storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'ranked' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
@@ -372,6 +373,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   lastInputEdit.callback('Cowboy Bebop');
   assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].kind, 'tv', 'title search should preserve the active anime-type filter');
   assert.equal(selectCalls.length, filterMenusBeforeSearch, 'title search should not open the filter menu');
   filtersButton.handlers['hover:enter']();
 
@@ -402,6 +404,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   returnedRoot.onBack();
   assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
   component.destroy();
+  storage.lme_shikimori_filters_v1 = {};
 }
 
 function testPaginationDeduplicationAndDestroy() {
