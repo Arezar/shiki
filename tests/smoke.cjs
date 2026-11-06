@@ -15,6 +15,8 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
+  '    getSeason: getSeason,',
+  '    isHighConfidenceTmdbMatch: isHighConfidenceTmdbMatch,',
   '  };',
   startMarker
 ].join('\n');
@@ -171,6 +173,25 @@ vm.runInNewContext(source, {
 
 const api = window.__shikiTest;
 assert.ok(api, 'test exports should be initialized');
+
+function testSeasonBoundariesAndTmdbMatchConfidence() {
+  assert.equal(api.getSeason(new Date(2026, 0, 15)), 'winter_2026', 'January belongs to winter of the same year');
+  assert.equal(api.getSeason(new Date(2026, 2, 15)), 'winter_2026', 'March must remain in winter');
+  assert.equal(api.getSeason(new Date(2026, 3, 15)), 'spring_2026', 'April starts spring');
+  assert.equal(api.getSeason(new Date(2026, 5, 15)), 'spring_2026', 'June remains in spring');
+  assert.equal(api.getSeason(new Date(2026, 6, 15)), 'summer_2026', 'July starts summer');
+  assert.equal(api.getSeason(new Date(2026, 8, 15)), 'summer_2026', 'September remains in summer');
+  assert.equal(api.getSeason(new Date(2026, 9, 15)), 'fall_2026', 'October starts fall');
+  assert.equal(api.getSeason(new Date(2026, 11, 15)), 'fall_2026', 'December remains in fall');
+
+  const anime = { kind: 'tv', airedOn: { year: 2001 } };
+  const exact = { id: 1, media_type: 'tv', name: 'Cowboy Bebop', first_air_date: '2001-01-01' };
+  assert.equal(api.isHighConfidenceTmdbMatch(anime, exact, ['Cowboy Bebop']), true, 'exact title, media type and year should be safe for automatic opening');
+  assert.equal(api.isHighConfidenceTmdbMatch(anime, { ...exact, name: 'Cowboy Bebop: The Movie' }, ['Cowboy Bebop']), false, 'partial title matches must require user confirmation');
+  assert.equal(api.isHighConfidenceTmdbMatch(anime, { ...exact, media_type: 'movie' }, ['Cowboy Bebop']), false, 'wrong media type must require user confirmation');
+  assert.equal(api.isHighConfidenceTmdbMatch(anime, { ...exact, first_air_date: '2005-01-01' }, ['Cowboy Bebop']), false, 'distant release years must require user confirmation');
+  assert.equal(api.isHighConfidenceTmdbMatch({ kind: 'movie', airedOn: { year: 2001 } }, { ...exact, media_type: 'movie' }, ['Cowboy Bebop']), true, 'exact movie matches with matching type should be accepted');
+}
 
 function testRequestCancellation() {
   const manager = new api.NetworkManager(12345);
@@ -608,6 +629,7 @@ function testLegacyCardFallbackSafety() {
   assert.match(source, /onCheck: function \(chosen\)/, 'genre filters should use checkbox callbacks');
 }
 
+testSeasonBoundariesAndTmdbMatchConfidence();
 testRequestCancellation();
 testGraphQLVariablesAndFilterCoverage();
 testNativeCardBadgesAndIdIsolation();
@@ -622,4 +644,4 @@ testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (12 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (13 groups)\n');
