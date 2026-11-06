@@ -338,8 +338,20 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(statusFilter.items.every(item => item.selected === false && item.checked === false));
   const typeFilter = basicMenu.items.find(item => item.title === 'Тип аниме');
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
-  const genreFilter = basicMenu.items.find(item => item.title === 'Жанры (можно несколько)');
+  const genreFilter = basicMenu.items.find(item => item.title === 'Жанры');
   assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
+  const genreSearch = basicMenu.items.find(item => item.genreSearch);
+  assert.ok(genreSearch, 'basic filters should expose a direct genre search action');
+  basicMenu.onSelect(genreSearch);
+  assert.equal(lastInputEdit.options.title, 'Найти жанр');
+  lastInputEdit.callback('два');
+  const matchingGenres = selectCalls[selectCalls.length - 1];
+  assert.equal(matchingGenres.title, 'Найденные жанры');
+  assert.equal(matchingGenres.items.length, 1, 'genre search should limit the long list to matching names');
+  assert.equal(matchingGenres.items[0].title, 'Жанр два');
+  matchingGenres.items[0].checked = true;
+  matchingGenres.onCheck(matchingGenres.items[0]);
+  assert.equal(genreFilter.items.find(item => item.id === 2).selected, true, 'filtered genre selection should update the full genre state');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }
@@ -382,18 +394,53 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
   assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
   assert.equal(rootMenu.items[0].title, 'Показать результаты');
-  assert.equal(rootMenu.items[0].subtitle, 'Активных фильтров: 1');
+  assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 1');
   assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /TV Series/, 'group summary should show the standard anime-type label');
   assert.match(source, /title: 'OVA', code: 'ova'/, 'OVA should keep its standard label without an explanation');
   assert.match(source, /title: 'ONA', code: 'ona'/, 'ONA should keep its standard label without an explanation');
   assert.ok(!rootMenu.items.some(item => item.searchAnimes), 'title search must stay outside the filters menu');
   assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
-  const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
+  assert.equal(rootMenu.items.find(item => item.group === 'basic').title, 'Основное');
+  assert.equal(rootMenu.items.find(item => item.group === 'quality').title, 'Рейтинг и формат');
+  const periodGroup = rootMenu.items.find(item => item.group === 'period');
+  assert.equal(periodGroup.title, 'Год и сортировка');
+  assert.equal(periodGroup.subtitle, 'Не выбрано', 'default sorting should not look like an active filter');
+  rootMenu.onSelect(periodGroup);
+
+  const periodMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(periodMenu.title, 'Год и сортировка');
+  assert.equal(periodMenu.items.length, 3, 'year, season and sorting should be separate controls');
+  const yearFilter = periodMenu.items.find(item => item.title === 'Год выпуска');
+  const seasonFilter = periodMenu.items.find(item => item.title === 'Сезон выхода');
+  assert.ok(yearFilter && seasonFilter);
+  assert.equal(yearFilter.items[0].title, 'Любой год');
+  assert.equal(seasonFilter.items[0].title, 'Любой сезон');
+  assert.match(seasonFilter.items[1].title, /^(Зима|Весна|Лето|Осень) \d{4}$/);
+  periodMenu.onSelect(yearFilter);
+
+  const yearMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(yearMenu.title, 'Год выпуска');
+  const decadeChoice = yearMenu.items.find(item => item.code);
+  assert.ok(decadeChoice, 'year list should expose decade choices separately from seasons');
+  yearMenu.onSelect(decadeChoice);
+  const returnedPeriod = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedPeriod.title, 'Год и сортировка');
+  assert.equal(returnedPeriod.items.find(item => item.title === 'Год выпуска').subtitle, decadeChoice.title);
+  assert.ok(
+    returnedPeriod.items.find(item => item.title === 'Сезон выхода').items.every(item => !item.selected),
+    'choosing a year should clear a previously selected season'
+  );
+  returnedPeriod.onBack();
+
+  const updatedRoot = selectCalls[selectCalls.length - 1];
+  assert.equal(updatedRoot.items[0].subtitle, 'Активных условий: 2');
+  assert.match(updatedRoot.items.find(item => item.group === 'period').subtitle, new RegExp(decadeChoice.title));
+  const qualityGroup = updatedRoot.items.find(item => item.group === 'quality');
   assert.ok(qualityGroup, 'quality group should be available');
-  rootMenu.onSelect(qualityGroup);
+  updatedRoot.onSelect(qualityGroup);
 
   const groupMenu = selectCalls[selectCalls.length - 1];
-  assert.equal(groupMenu.title, 'Оценки и формат');
+  assert.equal(groupMenu.title, 'Рейтинг и формат');
   assert.equal(groupMenu.items.length, 3, 'group should expose only its related filters');
   const scoreFilter = groupMenu.items.find(item => item.title === 'Минимальная оценка Shikimori');
   assert.ok(scoreFilter, 'group should expose the score filter');
@@ -402,7 +449,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const scoreMenu = selectCalls[selectCalls.length - 1];
   scoreMenu.onBack();
   const returnedGroup = selectCalls[selectCalls.length - 1];
-  assert.equal(returnedGroup.title, 'Оценки и формат', 'Back from a filter should return to its group');
+  assert.equal(returnedGroup.title, 'Рейтинг и формат', 'Back from a filter should return to its group');
   returnedGroup.onBack();
 
   const returnedRoot = selectCalls[selectCalls.length - 1];
