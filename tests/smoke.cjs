@@ -314,7 +314,7 @@ function testRestoredFiltersAreStableAcrossPages() {
 }
 
 function testResetFiltersClearsCheckboxState() {
-  storage.lme_shikimori_filters_v1 = { kind: 'tv', status: 'ongoing', sort: 'ranked', genre: '1,2' };
+  storage.lme_shikimori_filters_v1 = { kind: 'tv', status: 'ongoing', sort: 'ranked', genre: '1,2', search: 'Saved title' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
@@ -330,6 +330,7 @@ function testResetFiltersClearsCheckboxState() {
   const filterMenu = selectCalls[selectCalls.length - 1];
   assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
+  assert.equal(storage.lme_shikimori_filters_v1.search, 'Saved title', 'resetting filters must preserve the separate title search');
   const resetMenu = selectCalls[selectCalls.length - 1];
   resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
   const basicMenu = selectCalls[selectCalls.length - 1];
@@ -380,6 +381,9 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const rootMenu = selectCalls[selectCalls.length - 1];
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
   assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
+  assert.equal(rootMenu.items[0].title, 'Показать результаты');
+  assert.equal(rootMenu.items[0].subtitle, 'Активных фильтров: 1');
+  assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /Сериал/, 'group summary should show active selections');
   assert.ok(!rootMenu.items.some(item => item.searchAnimes), 'title search must stay outside the filters menu');
   assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
   const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
