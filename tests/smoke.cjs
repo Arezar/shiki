@@ -427,8 +427,9 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(returnedPeriod.title, 'Год и сортировка');
   assert.equal(returnedPeriod.items.find(item => item.title === 'Год выпуска').subtitle, decadeChoice.title);
   assert.ok(
-    returnedPeriod.items.find(item => item.title === 'Сезон выхода').items.every(item => !item.selected),
-    'choosing a year should clear a previously selected season'
+    returnedPeriod.items.find(item => item.title === 'Сезон выхода').items
+      .every(item => item.code === '' || !item.selected),
+    'choosing a year should clear every specific season selection'
   );
   returnedPeriod.onBack();
 
