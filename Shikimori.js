@@ -13,6 +13,45 @@
     });
   }
 
+  function getSeason(date) {
+    var month = date.getMonth();
+    var year = date.getFullYear();
+    var seasonIndex = Math.floor(month / 3);
+    var names = ['winter', 'spring', 'summer', 'fall'];
+    return names[seasonIndex] + '_' + year;
+  }
+
+  function normalizeMatchTitle(value) {
+    return String(value || '')
+      .replace(/\b(Season|Part)\s*\d*\.?\d*\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, ' ')
+      .trim();
+  }
+
+  function isHighConfidenceTmdbMatch(animeData, item, fallbackTitles) {
+    if (!animeData || !item || !item.id) return false;
+
+    var expectedType = animeData.kind === 'movie' ? 'movie' : 'tv';
+    if (item.media_type !== expectedType) return false;
+
+    var itemNames = [item.title, item.name, item.original_title, item.original_name]
+      .filter(Boolean)
+      .map(normalizeMatchTitle);
+    var wantedNames = (fallbackTitles || []).filter(Boolean).map(normalizeMatchTitle);
+    var exactTitleMatch = itemNames.some(function (name) {
+      return name && wantedNames.indexOf(name) !== -1;
+    });
+    if (!exactTitleMatch) return false;
+
+    var animeYear = animeData.airedOn && parseInt(animeData.airedOn.year, 10);
+    var itemDate = String(item.release_date || item.first_air_date || '');
+    var itemYear = parseInt(itemDate.slice(0, 4), 10);
+    return !(animeYear && itemYear && Math.abs(animeYear - itemYear) > 1);
+  }
+
   function imageUrlValue(value) {
     var url = String(value || '').trim();
     if (/^https?:\/\//i.test(url)) return url;
@@ -252,9 +291,7 @@
     }
 
     function normalizeTitle(value) {
-      return cleanName(value).toLowerCase()
-        .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, ' ')
-        .trim();
+      return normalizeMatchTitle(cleanName(value));
     }
 
     function rankCandidate(item) {
@@ -306,7 +343,7 @@
 
       runtimeCache.tmdb[cacheKey] = { results: candidates.slice(0, 10) };
 
-      if (candidates.length === 1 && rankCandidate(candidates[0]) >= 90) {
+      if (candidates.length === 1 && isHighConfidenceTmdbMatch(animeData, candidates[0], fallbackTitles)) {
         openFull(candidates[0], candidates[0].media_type);
         return;
       }
@@ -532,14 +569,6 @@
     var loadingStatus = null;
     var genresLoaded = false;
     var genresLoadFailed = false;
-
-    function getSeason(date) {
-      var month = date.getMonth();
-      var year = date.getFullYear();
-      var seasonIndex = Math.floor(((month + 1) % 12) / 3);
-      var names = ['winter', 'spring', 'summer', 'fall'];
-      return names[seasonIndex] + '_' + (month === 11 ? year + 1 : year);
-    }
 
     function createYearItems() {
       var now = new Date();
