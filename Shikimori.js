@@ -13,6 +13,45 @@
     });
   }
 
+  function getSeason(date) {
+    var month = date.getMonth();
+    var year = date.getFullYear();
+    var seasonIndex = Math.floor(month / 3);
+    var names = ['winter', 'spring', 'summer', 'fall'];
+    return names[seasonIndex] + '_' + year;
+  }
+
+  function normalizeMatchTitle(value) {
+    return String(value || '')
+      .replace(/\b(Season|Part)\s*\d*\.?\d*\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, ' ')
+      .trim();
+  }
+
+  function isHighConfidenceTmdbMatch(animeData, item, fallbackTitles) {
+    if (!animeData || !item || !item.id) return false;
+
+    var expectedType = animeData.kind === 'movie' ? 'movie' : 'tv';
+    if (item.media_type !== expectedType) return false;
+
+    var itemNames = [item.title, item.name, item.original_title, item.original_name]
+      .filter(Boolean)
+      .map(normalizeMatchTitle);
+    var wantedNames = (fallbackTitles || []).filter(Boolean).map(normalizeMatchTitle);
+    var exactTitleMatch = itemNames.some(function (name) {
+      return name && wantedNames.indexOf(name) !== -1;
+    });
+    if (!exactTitleMatch) return false;
+
+    var animeYear = animeData.airedOn && parseInt(animeData.airedOn.year, 10);
+    var itemDate = String(item.release_date || item.first_air_date || '');
+    var itemYear = parseInt(itemDate.slice(0, 4), 10);
+    return !(animeYear && itemYear && Math.abs(animeYear - itemYear) > 1);
+  }
+
   function imageUrlValue(value) {
     var url = String(value || '').trim();
     if (/^https?:\/\//i.test(url)) return url;
@@ -252,9 +291,7 @@
     }
 
     function normalizeTitle(value) {
-      return cleanName(value).toLowerCase()
-        .replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]+/g, ' ')
-        .trim();
+      return normalizeMatchTitle(cleanName(value));
     }
 
     function rankCandidate(item) {
@@ -306,7 +343,7 @@
 
       runtimeCache.tmdb[cacheKey] = { results: candidates.slice(0, 10) };
 
-      if (candidates.length === 1 && rankCandidate(candidates[0]) >= 90) {
+      if (candidates.length === 1 && isHighConfidenceTmdbMatch(animeData, candidates[0], fallbackTitles)) {
         openFull(candidates[0], candidates[0].media_type);
         return;
       }
@@ -515,7 +552,7 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filters</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var inited = false;
     var loading = false;
@@ -530,16 +567,10 @@
     var retryButton = null;
     var retryStatus = null;
     var loadingStatus = null;
+    var genresLoaded = false;
+    var genresLoadFailed = false;
 
-    function getSeason(date) {
-      var month = date.getMonth();
-      var year = date.getFullYear();
-      var seasonIndex = Math.floor(((month + 1) % 12) / 3);
-      var names = ['winter', 'spring', 'summer', 'fall'];
-      return names[seasonIndex] + '_' + (month === 11 ? year + 1 : year);
-    }
-
-    function createSeasonItems() {
+    function createYearItems() {
       var now = new Date();
       var currentDecade = Math.floor(now.getFullYear() / 10) * 10;
       var ranges = [];
@@ -548,22 +579,27 @@
         ranges.push({ title: decade + '-е', code: code });
       }
       ranges.push({ title: 'До 1980-х', code: 'ancient' });
+      return [{ title: 'Любой год', code: '' }].concat(ranges);
+    }
+
+    function createSeasonItems() {
+      var now = new Date();
       var seasons = [];
+      var names = { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' };
       for (var offset = -12; offset <= 4; offset++) {
         var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
         var code = getSeason(date);
         if (seasons.indexOf(code) === -1) seasons.push(code);
       }
-      return [{ title: 'Любой сезон / год', code: '' }]
-        .concat(ranges)
-        .concat(seasons.map(function (code) {
-          return { title: code.replace('_', ' '), code: code };
-        }));
+      return [{ title: 'Любой сезон', code: '' }].concat(seasons.map(function (code) {
+        var parts = code.split('_');
+        return { title: (names[parts[0]] || parts[0]) + ' ' + parts[1], code: code };
+      }));
     }
 
     var filters = {
       genres: {
-        title: 'Жанры (можно несколько)',
+        title: 'Жанры',
         multi: true,
         items: []
       },
@@ -621,8 +657,12 @@
           { title: 'R+ — 18+', code: 'r_plus' }
         ]
       },
-      seasons: {
-        title: 'Сезон / год',
+      year: {
+        title: 'Год выпуска',
+        items: createYearItems()
+      },
+      season: {
+        title: 'Сезон выхода',
         items: createSeasonItems()
       },
       sort: {
@@ -649,7 +689,8 @@
         score: filterState.score,
         rating: filterState.rating,
         duration: filterState.duration,
-        seasons: filterState.seasons,
+        year: filterState.seasons,
+        season: filterState.seasons,
         sort: filterState.sort
       };
       Object.keys(singleValues).forEach(function (key) {
@@ -676,6 +717,34 @@
       filter.subtitle = titles.length ? titles.join(', ') : 'Не выбрано';
     }
 
+    function filterSummary(key) {
+      var filter = filters[key];
+      if (!filter) return '';
+      var selected = filter.items.filter(function (item) { return item.selected; });
+      if (key === 'genres') {
+        var names = selected.map(function (item) { return item.title; });
+        if (!names.length) return 'Не выбрано';
+        return names.slice(0, 2).join(', ') + (names.length > 2 ? ' +' + (names.length - 2) : '');
+      }
+      var choice = selected[0];
+      if (!choice || choice.code === '') return 'Не выбрано';
+      if (key === 'sort' && choice.code === 'ranked') return 'Не выбрано';
+      return choice.title;
+    }
+
+    function groupSummary(keys) {
+      var values = keys.map(filterSummary).filter(function (value) {
+        return value && value !== 'Не выбрано';
+      });
+      return values.length ? values.join(' · ') : 'Не выбрано';
+    }
+
+    function activeFilterCount() {
+      return ['genres', 'type', 'status', 'score', 'rating', 'duration', 'year', 'season'].filter(function (key) {
+        return filterSummary(key) !== 'Не выбрано';
+      }).length;
+    }
+
     function selectedSingle(filter, value) {
       filter.items.forEach(function (item) {
         item.selected = String(item.code) === String(value == null ? '' : value);
@@ -685,6 +754,8 @@
 
     function loadGenres() {
       function ready(response) {
+        genresLoaded = true;
+        genresLoadFailed = false;
         runtimeCache.genres = (Array.isArray(response) ? response : []).filter(function (item) {
           return item && item.entry_type === 'Anime';
         }).map(function (item) {
@@ -705,6 +776,8 @@
             if (!inited) return;
             if (attempts++ < 2) requestGenres();
             else {
+              genresLoaded = true;
+              genresLoadFailed = true;
               console.warn('Shikimori: не удалось загрузить жанры', error);
               Lampa.Noty.show('Не удалось загрузить жанры Shikimori. Повторите открытие фильтров позже.');
             }
@@ -744,17 +817,41 @@
         onSelect: function (chosen) {
           var value = chosen && chosen.code;
           selectedSingle(filter, value);
-          filterState[key === 'type' ? 'kind' : key] = value || '';
+          var stateKey = key === 'type' ? 'kind' : (key === 'year' || key === 'season' ? 'seasons' : key);
+          filterState[stateKey] = value || '';
+          if (key === 'year') selectedSingle(filters.season, '');
+          else if (key === 'season') selectedSingle(filters.year, '');
           onReturn();
         }
       });
     }
 
-    function openGenreFilter(onReturn) {
+    function openGenreFilter(onReturn, query) {
       selectedTitle(filters.genres);
+      var normalizedQuery = String(query || '').trim().toLowerCase();
+      var visibleItems = normalizedQuery
+        ? filters.genres.items.filter(function (item) {
+          return String(item.title || '').toLowerCase().indexOf(normalizedQuery) !== -1;
+        })
+        : filters.genres.items;
+
+      if (!visibleItems.length) {
+        if (!genresLoaded) {
+          Lampa.Noty.show('Список жанров ещё загружается. Попробуйте немного позже.');
+        }
+        else if (genresLoadFailed) {
+          Lampa.Noty.show('Не удалось загрузить список жанров. Закройте и откройте каталог повторно.');
+        }
+        else {
+          Lampa.Noty.show('Жанры не найдены');
+        }
+        onReturn();
+        return;
+      }
+
       Lampa.Select.show({
-        title: filters.genres.title,
-        items: filters.genres.items,
+        title: normalizedQuery ? 'Найденные жанры' : filters.genres.title,
+        items: visibleItems,
         nohide: true,
         onBack: onReturn,
         onCheck: function (chosen) {
@@ -766,17 +863,49 @@
       });
     }
 
+    function openGenreSearch(onReturn) {
+      if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
+        Lampa.Noty.show('В этой версии Lampa недоступен поиск жанров');
+        return;
+      }
+      Lampa.Input.edit({
+        title: 'Найти жанр',
+        value: '',
+        free: true,
+        nosave: true
+      }, function (value) {
+        var query = String(value || '').trim();
+        if (!query) {
+          onReturn();
+          return;
+        }
+        openGenreFilter(onReturn, query);
+      });
+    }
+
     function openFilterGroup(title, keys, onReturn) {
       function showGroup() {
-        var groupItems = keys.map(function (key) {
+        var groupItems = [];
+        if (keys.indexOf('genres') !== -1) {
+          groupItems.push({
+            title: 'Найти жанр',
+            subtitle: 'Поиск по названию',
+            genreSearch: true
+          });
+        }
+        keys.forEach(function (key) {
           selectedTitle(filters[key]);
-          return filters[key];
+          groupItems.push(filters[key]);
         });
         Lampa.Select.show({
           title: title,
           items: groupItems,
           onBack: onReturn,
           onSelect: function (chosen) {
+            if (chosen && chosen.genreSearch) {
+              openGenreSearch(showGroup);
+              return;
+            }
             keys.some(function (key) {
               if (chosen !== filters[key]) return false;
               if (key === 'genres') openGenreFilter(showGroup);
@@ -802,7 +931,7 @@
         nosave: true
       }, function (value) {
         filterState.search = String(value || '').trim();
-        mainFilterMenu();
+        applyFilters();
       });
     }
 
@@ -816,7 +945,8 @@
     }
 
     function resetFilters() {
-      filterState = {};
+      var currentSearch = String(filterState.search || '');
+      filterState = { search: currentSearch };
       Object.keys(filters).forEach(function (key) {
         filters[key].items.forEach(function (item) {
           item.selected = false;
@@ -825,9 +955,8 @@
       });
       filterState.sort = 'ranked';
       filterState.genre = '';
-      filterState.search = '';
       selectedSingle(filters.sort, 'ranked');
-      Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: 'ranked' });
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
     }
 
@@ -835,21 +964,19 @@
       Lampa.Select.show({
         title: 'Фильтры Shikimori',
         items: [
-          { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
-          { title: 'Поиск по названию', subtitle: escapeHtml(filterState.search || 'Не задан'), searchAnimes: true },
-          { title: 'Основные параметры', subtitle: 'Жанры, тип и статус', group: 'basic' },
-          { title: 'Оценки и формат', subtitle: 'Оценка, возрастной рейтинг и длительность', group: 'quality' },
-          { title: 'Сезон и сортировка', subtitle: 'Период выхода и порядок каталога', group: 'period' },
-          { title: 'Сбросить все фильтры', resetFilters: true }
+          { title: 'Показать результаты', subtitle: 'Активных условий: ' + activeFilterCount(), applyFilters: true },
+          { title: 'Основное', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
+          { title: 'Рейтинг и формат', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
+          { title: 'Год и сортировка', subtitle: groupSummary(['year', 'season', 'sort']), group: 'period' },
+          { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
           if (chosen && chosen.applyFilters) applyFilters();
-          else if (chosen && chosen.searchAnimes) openTitleSearch();
           else if (chosen && chosen.resetFilters) resetFilters();
           else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
-          else if (chosen && chosen.group === 'quality') openFilterGroup('Оценки и формат', ['score', 'rating', 'duration'], mainFilterMenu);
-          else if (chosen && chosen.group === 'period') openFilterGroup('Сезон и сортировка', ['seasons', 'sort'], mainFilterMenu);
+          else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
+          else if (chosen && chosen.group === 'period') openFilterGroup('Год и сортировка', ['year', 'season', 'sort'], mainFilterMenu);
         }
       });
     }
@@ -986,10 +1113,15 @@
       if (headerReady) return;
       headerReady = true;
 
-      var searchButton = head.find('.LMEShikimori__search');
-      searchButton.off('hover:enter').on('hover:enter', function () {
-        last = searchButton;
+      var filtersButton = head.find('.LMEShikimori__filters');
+      filtersButton.off('hover:enter').on('hover:enter', function () {
+        last = filtersButton;
         mainFilterMenu();
+      });
+      var titleSearchButton = head.find('.LMEShikimori__title-search');
+      titleSearchButton.off('hover:enter').on('hover:enter', function () {
+        last = titleSearchButton;
+        openTitleSearch();
       });
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
@@ -1215,7 +1347,7 @@
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__loading-info,.LMEShikimori__retry-info{display:block;min-height:3em;padding:1.2em 1.5em;opacity:.85}.LMEShikimori__retry{margin:0 1.5em 1.5em}</style>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.6em;margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__loading-info,.LMEShikimori__retry-info{display:block;min-height:3em;padding:1.2em 1.5em;opacity:.85}.LMEShikimori__retry{margin:0 1.5em 1.5em}</style>");
     Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
