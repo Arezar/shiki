@@ -515,7 +515,7 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filters</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var inited = false;
     var loading = false;
@@ -571,15 +571,15 @@
         title: 'Тип аниме',
         items: [
           { title: 'Любой тип', code: '' },
-          { title: 'TV Series', code: 'tv' },
-          { title: 'Movie', code: 'movie' },
+          { title: 'Сериал', code: 'tv' },
+          { title: 'Фильм', code: 'movie' },
           { title: 'OVA', code: 'ova' },
           { title: 'ONA', code: 'ona' },
-          { title: 'Special', code: 'special' },
-          { title: 'TV Special', code: 'tv_special' },
-          { title: 'Music', code: 'music' },
-          { title: 'PV', code: 'pv' },
-          { title: 'CM', code: 'cm' }
+          { title: 'Спецвыпуск', code: 'special' },
+          { title: 'ТВ-спецвыпуск', code: 'tv_special' },
+          { title: 'Музыкальное видео', code: 'music' },
+          { title: 'Проморолик', code: 'pv' },
+          { title: 'Реклама', code: 'cm' }
         ]
       },
       status: {
@@ -802,7 +802,7 @@
         nosave: true
       }, function (value) {
         filterState.search = String(value || '').trim();
-        mainFilterMenu();
+        applyFilters();
       });
     }
 
@@ -836,7 +836,6 @@
         title: 'Фильтры Shikimori',
         items: [
           { title: 'Применить фильтры', subtitle: 'Открыть каталог с выбранными параметрами', applyFilters: true },
-          { title: 'Поиск по названию', subtitle: escapeHtml(filterState.search || 'Не задан'), searchAnimes: true },
           { title: 'Основные параметры', subtitle: 'Жанры, тип и статус', group: 'basic' },
           { title: 'Оценки и формат', subtitle: 'Оценка, возрастной рейтинг и длительность', group: 'quality' },
           { title: 'Сезон и сортировка', subtitle: 'Период выхода и порядок каталога', group: 'period' },
@@ -845,7 +844,6 @@
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
           if (chosen && chosen.applyFilters) applyFilters();
-          else if (chosen && chosen.searchAnimes) openTitleSearch();
           else if (chosen && chosen.resetFilters) resetFilters();
           else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
           else if (chosen && chosen.group === 'quality') openFilterGroup('Оценки и формат', ['score', 'rating', 'duration'], mainFilterMenu);
@@ -986,10 +984,15 @@
       if (headerReady) return;
       headerReady = true;
 
-      var searchButton = head.find('.LMEShikimori__search');
-      searchButton.off('hover:enter').on('hover:enter', function () {
-        last = searchButton;
+      var filtersButton = head.find('.LMEShikimori__filters');
+      filtersButton.off('hover:enter').on('hover:enter', function () {
+        last = filtersButton;
         mainFilterMenu();
+      });
+      var titleSearchButton = head.find('.LMEShikimori__title-search');
+      titleSearchButton.off('hover:enter').on('hover:enter', function () {
+        last = titleSearchButton;
+        openTitleSearch();
       });
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
@@ -1215,7 +1218,7 @@
     };
     Lampa.Manifest.plugins = manifest;
     //Set Style and Template
-    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__loading-info,.LMEShikimori__retry-info{display:block;min-height:3em;padding:1.2em 1.5em;opacity:.85}.LMEShikimori__retry{margin:0 1.5em 1.5em}</style>");
+    Lampa.Template.add('LMEShikimoriStyle', "<style>.LMEShikimori-head.torrent-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.6em;margin-left:1.5em}.LMEShikimori__kind{position:absolute;left:.5em;top:.5em;z-index:3;background:#ff4242;color:#fff}.LMEShikimori__loading-info,.LMEShikimori__retry-info{display:block;min-height:3em;padding:1.2em 1.5em;opacity:.85}.LMEShikimori__retry{margin:0 1.5em 1.5em}</style>");
     Lampa.Template.add("LMEShikimori-Card", "<div class=\"card selector layer--visible layer--render\"><div class=\"card__view\"><img src=\"{img}\" class=\"card__img\" /><div class=\"card__type LMEShikimori__kind\">{type}</div><div class=\"card__vote\">{rate}</div><div class=\"card__season\">{season}</div></div><div class=\"card__title\">{title}</div></div>");
     Lampa.Component.add(manifest.component, Component$1);
     //Set Franchise for FullCard
