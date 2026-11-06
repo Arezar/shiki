@@ -1035,6 +1035,10 @@
       this.body(result);
     };
 
+    this.back = function () {
+      Lampa.Activity.backward();
+    };
+
     this.start = function () {
       var activeActivity = Lampa.Activity.active();
       if (activeActivity && activeActivity.activity && activeActivity.activity !== this.activity) return;
