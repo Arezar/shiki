@@ -35,6 +35,8 @@ const layerVisibleCalls = [];
 const controllerCollections = {};
 let lastCollectionFocus = null;
 let activityBackwardCalls = 0;
+const activityPushCalls = [];
+let lastInputEdit = null;
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -121,7 +123,8 @@ const Lampa = {
   },
   Component: { add() {} },
   Listener: { follow() {}, remove() {} },
-  Activity: { push() {}, active() { return null; }, backward() { activityBackwardCalls++; } },
+  Activity: { push(params) { activityPushCalls.push(params); }, active() { return null; }, backward() { activityBackwardCalls++; } },
+  Input: { edit(options, callback) { lastInputEdit = { options, callback }; } },
   Noty: { show() {} },
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
@@ -321,9 +324,9 @@ function testResetFiltersClearsCheckboxState() {
     { id: 2, entry_type: 'Anime', russian: 'Жанр два' }
   ]);
 
-  const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
-  assert.ok(searchButton && searchButton.handlers['hover:enter']);
-  searchButton.handlers['hover:enter']();
+  const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
+  assert.ok(filtersButton && filtersButton.handlers['hover:enter']);
+  filtersButton.handlers['hover:enter']();
   const filterMenu = selectCalls[selectCalls.length - 1];
   assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
@@ -352,13 +355,30 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const backCallsBefore = activityBackwardCalls;
   contentController.back();
   assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
-  const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
-  assert.ok(searchButton && searchButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
-  searchButton.handlers['hover:enter']();
+  const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
+  const titleSearchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__title-search').pop();
+  const homeButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__home').pop();
+  assert.ok(filtersButton && filtersButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
+  assert.ok(titleSearchButton && titleSearchButton.handlers['hover:enter'], 'title search must have its own remote button');
+  assert.ok(homeButton && homeButton.handlers['hover:enter'], 'home button must be reachable by remote activation');
+  assert.match(source, /Главная/);
+  assert.match(source, /Поиск по названию/);
+  assert.match(source, />Фильтры</);
+  titleSearchButton.handlers['hover:enter']();
+  assert.ok(lastInputEdit, 'title search button should open the text input directly');
+  assert.equal(lastInputEdit.options.title, 'Поиск аниме на Shikimori');
+  const pushCountBeforeSearch = activityPushCalls.length;
+  lastInputEdit.callback('Cowboy Bebop');
+  assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
+  assert.equal(selectCalls.length, 0, 'title search should not open the filter menu');
+  filtersButton.handlers['hover:enter']();
 
   const rootMenu = selectCalls[selectCalls.length - 1];
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
-  assert.equal(rootMenu.items.length, 6, 'top-level filters should be grouped into a compact menu');
+  assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
+  assert.ok(!rootMenu.items.some(item => item.searchAnimes), 'title search must stay outside the filters menu');
+  assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
   const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
   assert.ok(qualityGroup, 'quality group should be available');
   rootMenu.onSelect(qualityGroup);
@@ -379,7 +399,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const returnedRoot = selectCalls[selectCalls.length - 1];
   assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
   returnedRoot.onBack();
-  assert.equal(lastCollectionFocus, searchButton, 'Back out of filters should restore focus to the Filters button');
+  assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
   component.destroy();
 }
 
