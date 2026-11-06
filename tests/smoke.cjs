@@ -31,6 +31,8 @@ let lastTemplate = null;
 let emptyCreated = 0;
 const scrollInstances = [];
 const selectCalls = [];
+const controllerCollections = {};
+let lastCollectionFocus = null;
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -40,16 +42,31 @@ function FakeJQuery(selector) {
   jqueryInstances.push(this);
 }
 FakeJQuery.prototype.eq = function () { return this; };
-FakeJQuery.prototype.append = function (value) { this.nodes.push(value); return this; };
+FakeJQuery.prototype.append = function (value) {
+  if (value instanceof FakeJQuery) value.parent = this;
+  this.nodes.push(value);
+  return this;
+};
 FakeJQuery.prototype.on = function (event, callback) { this.handlers[event] = callback; return this; };
 FakeJQuery.prototype.off = function () { this.handlers = {}; return this; };
 FakeJQuery.prototype.find = function (selector) { return new FakeJQuery(selector); };
 FakeJQuery.prototype.addClass = function () { return this; };
 FakeJQuery.prototype.removeClass = function () { return this; };
-FakeJQuery.prototype.remove = function () { this.removed = true; return this; };
+FakeJQuery.prototype.remove = function () {
+  this.removed = true;
+  if (this.parent && this.parent.nodes) {
+    const index = this.parent.nodes.indexOf(this);
+    if (index !== -1) this.parent.nodes.splice(index, 1);
+  }
+  return this;
+};
 FakeJQuery.prototype.empty = function () { this.nodes = []; return this; };
-FakeJQuery.prototype.text = function () { return this; };
-FakeJQuery.prototype.prepend = function (value) { this.nodes.unshift(value); return this; };
+FakeJQuery.prototype.text = function (value) { if (arguments.length) this.textContent = String(value); return this; };
+FakeJQuery.prototype.prepend = function (value) {
+  if (value instanceof FakeJQuery) value.parent = this;
+  this.nodes.unshift(value);
+  return this;
+};
 
 function $(selector) {
   return new FakeJQuery(selector);
@@ -107,7 +124,13 @@ const Lampa = {
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
   Controller: {
-    toggle() {}, own: () => true, add() {}, collectionSet() {}, collectionFocus() {}
+    toggle(name) {
+      if (name === 'content' && controllerCollections.content) controllerCollections.content.toggle();
+    },
+    own: () => true,
+    add(name, options) { controllerCollections[name] = options; },
+    collectionSet() {},
+    collectionFocus(focus) { lastCollectionFocus = focus; }
   },
   Utils: { protocol: () => 'https://' },
   Arrays: { destroy() {} },
@@ -299,16 +322,57 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(searchButton && searchButton.handlers['hover:enter']);
   searchButton.handlers['hover:enter']();
   const filterMenu = selectCalls[selectCalls.length - 1];
+  assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
   const resetMenu = selectCalls[selectCalls.length - 1];
-  const statusFilter = resetMenu.items.find(item => item.title === 'Статус выхода');
+  resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
+  const basicMenu = selectCalls[selectCalls.length - 1];
+  const statusFilter = basicMenu.items.find(item => item.title === 'Статус выхода');
   assert.ok(statusFilter.items.every(item => item.selected === false && item.checked === false));
-  const typeFilter = resetMenu.items.find(item => item.title === 'Тип аниме');
+  const typeFilter = basicMenu.items.find(item => item.title === 'Тип аниме');
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
-  const genreFilter = resetMenu.items.find(item => item.title === 'Жанры (можно несколько)');
+  const genreFilter = basicMenu.items.find(item => item.title === 'Жанры (можно несколько)');
   assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
+}
+
+function testTvFriendlyFilterGroupsAndBackNavigation() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  component.start();
+  const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
+  assert.ok(searchButton && searchButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
+  searchButton.handlers['hover:enter']();
+
+  const rootMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(rootMenu.title, 'Фильтры Shikimori');
+  assert.equal(rootMenu.items.length, 6, 'top-level filters should be grouped into a compact menu');
+  const qualityGroup = rootMenu.items.find(item => item.group === 'quality');
+  assert.ok(qualityGroup, 'quality group should be available');
+  rootMenu.onSelect(qualityGroup);
+
+  const groupMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(groupMenu.title, 'Оценки и формат');
+  assert.equal(groupMenu.items.length, 3, 'group should expose only its related filters');
+  const scoreFilter = groupMenu.items.find(item => item.title === 'Минимальная оценка Shikimori');
+  assert.ok(scoreFilter, 'group should expose the score filter');
+  groupMenu.onSelect(scoreFilter);
+
+  const scoreMenu = selectCalls[selectCalls.length - 1];
+  scoreMenu.onBack();
+  const returnedGroup = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedGroup.title, 'Оценки и формат', 'Back from a filter should return to its group');
+  returnedGroup.onBack();
+
+  const returnedRoot = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  returnedRoot.onBack();
+  assert.equal(lastCollectionFocus, searchButton, 'Back out of filters should restore focus to the Filters button');
+  component.destroy();
 }
 
 function testPaginationDeduplicationAndDestroy() {
@@ -355,6 +419,46 @@ function testEmptyRestoredPage() {
   component.destroy();
 }
 
+function testCatalogueRetryAfterInitialFailure() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = {
+    loader() {},
+    toggle() {
+      if (controllerCollections.content) controllerCollections.content.toggle();
+    }
+  };
+  component.create();
+  component.start();
+
+  const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
+  const firstRequest = graphqlRequests()[0];
+  assert.ok(firstRequest, 'initial catalogue request should start');
+  const initialLoading = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__loading-info') !== -1).pop();
+  assert.ok(initialLoading && source.includes('Загружается каталог Shikimori'), 'initial load should render a visible progress status');
+  firstRequest.xhr.reject(503, { message: 'Service unavailable' });
+  assert.equal(initialLoading.removed, true, 'loading status should be removed after a request failure');
+
+  const retry = jqueryInstances.find(item => String(item.selector).indexOf('LMEShikimori__retry">') !== -1);
+  assert.ok(retry && retry.handlers['hover:enter'], 'failed initial load should expose a remote-friendly retry control');
+  assert.equal(lastCollectionFocus, retry, 'failure should move remote focus to the retry control');
+  retry.handlers['hover:enter']();
+  assert.equal(graphqlRequests().length, 2, 'retry should issue another catalogue request');
+  const retryRequest = graphqlRequests()[1];
+  assert.equal(JSON.parse(retryRequest.options.data).variables.page, 1, 'retry should request the failed page');
+  assert.equal(retry.removed, true, 'retry control should disappear once retry starts');
+  const retryLoading = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__loading-info') !== -1).pop();
+  assert.ok(retryLoading && source.includes('Повторная загрузка каталога'), 'retry should render a visible loading status');
+
+  retryRequest.xhr.resolve({ data: { animes: [{ id: 9001, name: 'Retry success' }] } });
+  assert.equal(retryLoading.removed, true, 'loading status should disappear after a successful retry');
+  component.destroy();
+}
+
+function testTmdbAdultSearchFlagRemainsEnabled() {
+  assert.match(source, /&include_adult=true&query=/, 'TMDB fallback search should preserve the existing include_adult=true behavior');
+}
+
 function testNoAccountAuthorizationRemains() {
   assert.equal(Object.keys(storage.lme_shikimori_account_v1).length, 0, 'legacy OAuth credentials and tokens must be cleared');
   assert.equal(storage.lme_shikimori_oauth_state, '', 'legacy OAuth state must be cleared');
@@ -390,9 +494,12 @@ testGraphQLVariablesAndFilterCoverage();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testResetFiltersClearsCheckboxState();
+testTvFriendlyFilterGroupsAndBackNavigation();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
+testCatalogueRetryAfterInitialFailure();
 testLegacyCardFallbackSafety();
+testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (9 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (12 groups)\n');
