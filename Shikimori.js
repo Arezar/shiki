@@ -539,7 +539,7 @@
       return names[seasonIndex] + '_' + (month === 11 ? year + 1 : year);
     }
 
-    function createSeasonItems() {
+    function createYearItems() {
       var now = new Date();
       var currentDecade = Math.floor(now.getFullYear() / 10) * 10;
       var ranges = [];
@@ -548,22 +548,27 @@
         ranges.push({ title: decade + '-е', code: code });
       }
       ranges.push({ title: 'До 1980-х', code: 'ancient' });
+      return [{ title: 'Любой год', code: '' }].concat(ranges);
+    }
+
+    function createSeasonItems() {
+      var now = new Date();
       var seasons = [];
+      var names = { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' };
       for (var offset = -12; offset <= 4; offset++) {
         var date = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
         var code = getSeason(date);
         if (seasons.indexOf(code) === -1) seasons.push(code);
       }
-      return [{ title: 'Любой сезон / год', code: '' }]
-        .concat(ranges)
-        .concat(seasons.map(function (code) {
-          return { title: code.replace('_', ' '), code: code };
-        }));
+      return [{ title: 'Любой сезон', code: '' }].concat(seasons.map(function (code) {
+        var parts = code.split('_');
+        return { title: (names[parts[0]] || parts[0]) + ' ' + parts[1], code: code };
+      }));
     }
 
     var filters = {
       genres: {
-        title: 'Жанры (можно несколько)',
+        title: 'Жанры',
         multi: true,
         items: []
       },
@@ -621,8 +626,12 @@
           { title: 'R+ — 18+', code: 'r_plus' }
         ]
       },
-      seasons: {
-        title: 'Сезон / год',
+      year: {
+        title: 'Год выпуска',
+        items: createYearItems()
+      },
+      season: {
+        title: 'Сезон выхода',
         items: createSeasonItems()
       },
       sort: {
@@ -649,7 +658,8 @@
         score: filterState.score,
         rating: filterState.rating,
         duration: filterState.duration,
-        seasons: filterState.seasons,
+        year: filterState.seasons,
+        season: filterState.seasons,
         sort: filterState.sort
       };
       Object.keys(singleValues).forEach(function (key) {
@@ -687,6 +697,7 @@
       }
       var choice = selected[0];
       if (!choice || choice.code === '') return 'Не выбрано';
+      if (key === 'sort' && choice.code === 'ranked') return 'Не выбрано';
       return choice.title;
     }
 
@@ -698,7 +709,7 @@
     }
 
     function activeFilterCount() {
-      return ['genres', 'type', 'status', 'score', 'rating', 'duration', 'seasons'].filter(function (key) {
+      return ['genres', 'type', 'status', 'score', 'rating', 'duration', 'year', 'season'].filter(function (key) {
         return filterSummary(key) !== 'Не выбрано';
       }).length;
     }
@@ -771,17 +782,33 @@
         onSelect: function (chosen) {
           var value = chosen && chosen.code;
           selectedSingle(filter, value);
-          filterState[key === 'type' ? 'kind' : key] = value || '';
+          var stateKey = key === 'type' ? 'kind' : (key === 'year' || key === 'season' ? 'seasons' : key);
+          filterState[stateKey] = value || '';
+          if (key === 'year') selectedSingle(filters.season, '');
+          else if (key === 'season') selectedSingle(filters.year, '');
           onReturn();
         }
       });
     }
 
-    function openGenreFilter(onReturn) {
+    function openGenreFilter(onReturn, query) {
       selectedTitle(filters.genres);
+      var normalizedQuery = String(query || '').trim().toLowerCase();
+      var visibleItems = normalizedQuery
+        ? filters.genres.items.filter(function (item) {
+          return String(item.title || '').toLowerCase().indexOf(normalizedQuery) !== -1;
+        })
+        : filters.genres.items;
+
+      if (!visibleItems.length) {
+        Lampa.Noty.show('Жанры не найдены');
+        onReturn();
+        return;
+      }
+
       Lampa.Select.show({
-        title: filters.genres.title,
-        items: filters.genres.items,
+        title: normalizedQuery ? 'Найденные жанры' : filters.genres.title,
+        items: visibleItems,
         nohide: true,
         onBack: onReturn,
         onCheck: function (chosen) {
@@ -793,17 +820,49 @@
       });
     }
 
+    function openGenreSearch(onReturn) {
+      if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
+        Lampa.Noty.show('В этой версии Lampa недоступен поиск жанров');
+        return;
+      }
+      Lampa.Input.edit({
+        title: 'Найти жанр',
+        value: '',
+        free: true,
+        nosave: true
+      }, function (value) {
+        var query = String(value || '').trim();
+        if (!query) {
+          onReturn();
+          return;
+        }
+        openGenreFilter(onReturn, query);
+      });
+    }
+
     function openFilterGroup(title, keys, onReturn) {
       function showGroup() {
-        var groupItems = keys.map(function (key) {
+        var groupItems = [];
+        if (keys.indexOf('genres') !== -1) {
+          groupItems.push({
+            title: 'Найти жанр',
+            subtitle: 'Поиск по названию',
+            genreSearch: true
+          });
+        }
+        keys.forEach(function (key) {
           selectedTitle(filters[key]);
-          return filters[key];
+          groupItems.push(filters[key]);
         });
         Lampa.Select.show({
           title: title,
           items: groupItems,
           onBack: onReturn,
           onSelect: function (chosen) {
+            if (chosen && chosen.genreSearch) {
+              openGenreSearch(showGroup);
+              return;
+            }
             keys.some(function (key) {
               if (chosen !== filters[key]) return false;
               if (key === 'genres') openGenreFilter(showGroup);
@@ -862,10 +921,10 @@
       Lampa.Select.show({
         title: 'Фильтры Shikimori',
         items: [
-          { title: 'Показать результаты', subtitle: 'Активных фильтров: ' + activeFilterCount(), applyFilters: true },
-          { title: 'Жанры, тип и статус', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
-          { title: 'Оценка, рейтинг и длительность', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
-          { title: 'Сезон и сортировка', subtitle: groupSummary(['seasons', 'sort']), group: 'period' },
+          { title: 'Показать результаты', subtitle: 'Активных условий: ' + activeFilterCount(), applyFilters: true },
+          { title: 'Основное', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
+          { title: 'Рейтинг и формат', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
+          { title: 'Год и сортировка', subtitle: groupSummary(['year', 'season', 'sort']), group: 'period' },
           { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
@@ -873,8 +932,8 @@
           if (chosen && chosen.applyFilters) applyFilters();
           else if (chosen && chosen.resetFilters) resetFilters();
           else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
-          else if (chosen && chosen.group === 'quality') openFilterGroup('Оценки и формат', ['score', 'rating', 'duration'], mainFilterMenu);
-          else if (chosen && chosen.group === 'period') openFilterGroup('Сезон и сортировка', ['seasons', 'sort'], mainFilterMenu);
+          else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
+          else if (chosen && chosen.group === 'period') openFilterGroup('Год и сортировка', ['year', 'season', 'sort'], mainFilterMenu);
         }
       });
     }
