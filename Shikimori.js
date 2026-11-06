@@ -571,15 +571,15 @@
         title: 'Тип аниме',
         items: [
           { title: 'Любой тип', code: '' },
-          { title: 'Сериал', code: 'tv' },
-          { title: 'Фильм', code: 'movie' },
-          { title: 'OVA — выпуск на видео', code: 'ova' },
-          { title: 'ONA — интернет-сериал', code: 'ona' },
-          { title: 'Спецвыпуск', code: 'special' },
-          { title: 'ТВ-спецвыпуск', code: 'tv_special' },
-          { title: 'Музыкальное видео', code: 'music' },
-          { title: 'Проморолик', code: 'pv' },
-          { title: 'Реклама', code: 'cm' }
+          { title: 'TV Series', code: 'tv' },
+          { title: 'Movie', code: 'movie' },
+          { title: 'OVA', code: 'ova' },
+          { title: 'ONA', code: 'ona' },
+          { title: 'Special', code: 'special' },
+          { title: 'TV Special', code: 'tv_special' },
+          { title: 'Music', code: 'music' },
+          { title: 'PV', code: 'pv' },
+          { title: 'CM', code: 'cm' }
         ]
       },
       status: {
