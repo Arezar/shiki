@@ -33,6 +33,7 @@ const scrollInstances = [];
 const selectCalls = [];
 const controllerCollections = {};
 let lastCollectionFocus = null;
+let activityBackwardCalls = 0;
 
 function FakeJQuery(selector) {
   this.selector = selector;
@@ -119,7 +120,7 @@ const Lampa = {
   },
   Component: { add() {} },
   Listener: { follow() {}, remove() {} },
-  Activity: { push() {}, active() { return null; } },
+  Activity: { push() {}, active() { return null; }, backward() { activityBackwardCalls++; } },
   Noty: { show() {} },
   Select: { show(options) { selectCalls.push(options); } },
   Lang: { translate: () => 'none' },
@@ -344,6 +345,11 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   component.create();
 
   component.start();
+  const contentController = controllerCollections.content;
+  assert.ok(contentController && typeof contentController.back === 'function', 'catalogue controller must expose a Back handler');
+  const backCallsBefore = activityBackwardCalls;
+  contentController.back();
+  assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
   const searchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__search').pop();
   assert.ok(searchButton && searchButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
   searchButton.handlers['hover:enter']();
