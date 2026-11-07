@@ -552,7 +552,7 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div><div class='LMEShikimori__sort simple-button simple-button--filter selector'>Сортировка</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var inited = false;
     var loading = false;
@@ -917,6 +917,25 @@
       });
     }
 
+    function openSortMenu() {
+      var sortButton = head.find('.LMEShikimori__sort');
+      Lampa.Select.show({
+        title: 'Сортировка',
+        items: filters.sort.items,
+        onBack: function () {
+          last = sortButton;
+          Lampa.Controller.toggle('content');
+        },
+        onSelect: function (chosen) {
+          var value = chosen && chosen.code;
+          selectedSingle(filters.sort, value);
+          filterState.sort = value || 'popularity';
+          persistFilters();
+          applyFilters();
+        }
+      });
+    }
+
     function applyFilters() {
       var params = persistFilters();
       params.url = '';
@@ -951,7 +970,6 @@
           { title: 'Рейтинг и формат', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
           { title: 'Год выпуска', subtitle: filterSummary('year'), group: 'year' },
           { title: 'Сезон выхода', subtitle: filterSummary('season'), group: 'season' },
-          { title: 'Сортировка', subtitle: filterSummary('sort'), group: 'sort' },
           { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
@@ -962,7 +980,6 @@
           else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
           else if (chosen && chosen.group === 'year') openFilterGroup('Год выпуска', ['year'], mainFilterMenu);
           else if (chosen && chosen.group === 'season') openFilterGroup('Сезон выхода', ['season'], mainFilterMenu);
-          else if (chosen && chosen.group === 'sort') openFilterGroup('Сортировка', ['sort'], mainFilterMenu);
         }
       });
     }
@@ -1108,6 +1125,11 @@
       titleSearchButton.off('hover:enter').on('hover:enter', function () {
         last = titleSearchButton;
         openTitleSearch();
+      });
+      var sortButton = head.find('.LMEShikimori__sort');
+      sortButton.off('hover:enter').on('hover:enter', function () {
+        last = sortButton;
+        openSortMenu();
       });
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
