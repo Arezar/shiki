@@ -1158,6 +1158,11 @@
     };
 
     this.back = function () {
+      // Leaving the Shikimori catalogue starts the next visit with default filters.
+      // Keep the independent title query, but clear all catalogue filter selections.
+      var titleQuery = String(filterState.search || '').trim();
+      filterState = { search: titleQuery, sort: 'ranked' };
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { search: titleQuery, sort: 'ranked' });
       Lampa.Activity.backward();
     };
 
