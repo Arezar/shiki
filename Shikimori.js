@@ -761,8 +761,20 @@
         }).map(function (item) {
           return $.extend({}, item, { title: escapeHtml(item.russian || item.name || String(item.id)) });
         });
+        var popularGenres = ['приключения', 'комедия', 'драма', 'романтика', 'фэнтези', 'экшен', 'фантастика', 'повседневность', 'школа', 'сверхъестественное', 'спорт', 'детектив', 'триллер'];
         filters.genres.items = runtimeCache.genres.map(function (item) {
           return $.extend({}, item, { code: String(item.id), checkbox: true });
+        }).sort(function (a, b) {
+          var aTitle = String(a.title || '').toLocaleLowerCase('ru');
+          var bTitle = String(b.title || '').toLocaleLowerCase('ru');
+          var aPopular = popularGenres.indexOf(aTitle);
+          var bPopular = popularGenres.indexOf(bTitle);
+          if (aPopular !== -1 || bPopular !== -1) {
+            if (aPopular === -1) return 1;
+            if (bPopular === -1) return -1;
+            return aPopular - bPopular;
+          }
+          return aTitle.localeCompare(bTitle, 'ru');
         });
         if (!inited) return;
         restoreFilterSelection();
