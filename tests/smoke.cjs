@@ -334,7 +334,7 @@ function testRestoredFiltersAreStableAcrossPages() {
   component.destroy();
   const seasonNames = ['winter', 'spring', 'summer', 'fall'];
   const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
-  assert.deepEqual(storage.lme_shikimori_filters_v1, { seasons: currentSeason, sort: 'popularity' }, 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
+  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'popularity' }), 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
   storage.lme_shikimori_filters_v1 = {};
 }
 
@@ -445,6 +445,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].kind, 'tv', 'title search should preserve the active anime-type filter');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].sort, 'ranked', 'title search should preserve the selected sort');
   assert.equal(selectCalls.length, filterMenusBeforeSearch, 'title search should not open the filter menu');
   filtersButton.handlers['hover:enter']();
 
