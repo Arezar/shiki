@@ -332,6 +332,7 @@ function testRestoredFiltersAreStableAcrossPages() {
     assert.equal(secondVariables[key], firstVariables[key], 'filter changed between pages for ' + key);
   });
   component.destroy();
+  assert.deepEqual(storage.lme_shikimori_filters_v1, { sort: 'ranked' }, 'leaving the catalogue should clear all filters and title search while retaining standalone sort');
   storage.lme_shikimori_filters_v1 = {};
 }
 
