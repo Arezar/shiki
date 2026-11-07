@@ -1198,6 +1198,9 @@
     };
 
     this.destroy = function () {
+      // Filters and title search are session-scoped: leaving the catalogue resets them.
+      // Keep the standalone sort preference, which is not a filter condition.
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: filterState.sort || 'ranked' });
       inited = false;
       loading = false;
       clearRetry();
