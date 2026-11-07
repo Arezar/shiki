@@ -729,7 +729,7 @@
       }
       var choice = selected[0];
       if (!choice || choice.code === '') return 'Не выбрано';
-      if (key === 'sort' && choice.code === 'ranked') return 'Не выбрано';
+      if (key === 'sort' && choice.code === 'popularity') return 'Не выбрано';
       return choice.title;
     }
 
