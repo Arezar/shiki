@@ -563,7 +563,8 @@
     var last = null;
     var self = this;
     var filterDefaults = Lampa.Storage.get(FILTERS_STORAGE_KEY, {}) || {};
-    var filterState = $.extend({}, filterDefaults, object);
+    var defaultFilterState = { seasons: getSeason(new Date()), sort: 'popularity' };
+    var filterState = $.extend({}, defaultFilterState, filterDefaults, object);
     var retryButton = null;
     var retryStatus = null;
     var loadingStatus = null;
@@ -927,16 +928,16 @@
 
     function resetFilters() {
       var currentSearch = String(filterState.search || '');
-      filterState = { search: currentSearch };
+      filterState = { search: currentSearch, seasons: getSeason(new Date()), sort: 'popularity' };
       Object.keys(filters).forEach(function (key) {
         filters[key].items.forEach(function (item) {
           item.selected = false;
           item.checked = false;
         });
       });
-      filterState.sort = 'ranked';
       filterState.genre = '';
-      selectedSingle(filters.sort, 'ranked');
+      selectedSingle(filters.sort, 'popularity');
+      selectedSingle(filters.season, filterState.seasons);
       Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
     }
@@ -1200,7 +1201,7 @@
     this.destroy = function () {
       // Filters and title search are session-scoped: leaving the catalogue resets them.
       // Keep the standalone sort preference, which is not a filter condition.
-      Lampa.Storage.set(FILTERS_STORAGE_KEY, { sort: filterState.sort || 'ranked' });
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { seasons: getSeason(new Date()), sort: 'popularity' });
       inited = false;
       loading = false;
       clearRetry();
