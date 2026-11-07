@@ -362,17 +362,14 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
   const genreFilter = basicMenu.items.find(item => item.title === 'Жанры');
   assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
-  const genreSearch = basicMenu.items.find(item => item.genreSearch);
-  assert.ok(genreSearch, 'basic filters should expose a direct genre search action');
-  basicMenu.onSelect(genreSearch);
-  assert.equal(lastInputEdit.options.title, 'Найти жанр');
-  lastInputEdit.callback('два');
-  const matchingGenres = selectCalls[selectCalls.length - 1];
-  assert.equal(matchingGenres.title, 'Найденные жанры');
-  assert.equal(matchingGenres.items.length, 1, 'genre search should limit the long list to matching names');
-  assert.equal(matchingGenres.items[0].title, 'Жанр два');
-  matchingGenres.items[0].checked = true;
-  matchingGenres.onCheck(matchingGenres.items[0]);
+  assert.ok(!basicMenu.items.some(item => item.genreSearch), 'genre selection should not require a text search');
+  basicMenu.onSelect(genreFilter);
+  const genreChoices = selectCalls[selectCalls.length - 1];
+  assert.equal(genreChoices.title, 'Жанры');
+  assert.equal(genreChoices.items.length, 2, 'opening genres should show the ready-made full list');
+  assert.deepEqual(genreChoices.items.map(item => item.title), ['Жанр один', 'Жанр два']);
+  genreChoices.items[1].checked = true;
+  genreChoices.onCheck(genreChoices.items[1]);
   assert.equal(genreFilter.items.find(item => item.id === 2).selected, true, 'filtered genre selection should update the full genre state');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
@@ -515,9 +512,9 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(returnedGroup.title, 'Рейтинг и формат', 'Back from a filter should return to its group');
   returnedGroup.onBack();
 
-  const returnedRoot = selectCalls[selectCalls.length - 1];
-  assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
-  returnedRoot.onBack();
+  const rootAfterGroup = selectCalls[selectCalls.length - 1];
+  assert.equal(rootAfterGroup.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  rootAfterGroup.onBack();
   assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
