@@ -332,7 +332,9 @@ function testRestoredFiltersAreStableAcrossPages() {
     assert.equal(secondVariables[key], firstVariables[key], 'filter changed between pages for ' + key);
   });
   component.destroy();
-  assert.deepEqual(storage.lme_shikimori_filters_v1, { sort: 'ranked' }, 'leaving the catalogue should clear all filters and title search while retaining standalone sort');
+  const seasonNames = ['winter', 'spring', 'summer', 'fall'];
+  const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
+  assert.deepEqual(storage.lme_shikimori_filters_v1, { seasons: currentSeason, sort: 'popularity' }, 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
   storage.lme_shikimori_filters_v1 = {};
 }
 
@@ -356,6 +358,10 @@ function testResetFiltersClearsCheckboxState() {
   const filterMenu = selectCalls[selectCalls.length - 1];
   assert.ok(filterMenu.items.length <= 7, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
+  const seasonNames = ['winter', 'spring', 'summer', 'fall'];
+  const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
+  assert.equal(storage.lme_shikimori_filters_v1.seasons, currentSeason, 'resetting filters should restore the current season');
+  assert.equal(storage.lme_shikimori_filters_v1.sort, 'popularity', 'resetting filters should restore popularity sorting');
   assert.equal(storage.lme_shikimori_filters_v1.search, 'Saved title', 'resetting filters must preserve the separate title search');
   const resetMenu = selectCalls[selectCalls.length - 1];
   resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
