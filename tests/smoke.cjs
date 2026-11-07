@@ -492,7 +492,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const seasonMenu = selectCalls[selectCalls.length - 1];
   assert.equal(seasonMenu.title, 'Сезон выхода');
   assert.equal(seasonMenu.items[0].title, 'Любой сезон');
-  assert.match(seasonMenu.items[1].title, /^(Зима|Весна|Лето|Осень) \\d{4}$/);
+  assert.match(seasonMenu.items[1].title, /^(Зима|Весна|Лето|Осень) \d{4}$/);
   seasonMenu.onBack();
 
   const rootBeforeYear = selectCalls[selectCalls.length - 1];
