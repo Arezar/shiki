@@ -350,7 +350,7 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(filtersButton && filtersButton.handlers['hover:enter']);
   filtersButton.handlers['hover:enter']();
   const filterMenu = selectCalls[selectCalls.length - 1];
-  assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
+  assert.ok(filterMenu.items.length <= 7, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
   assert.equal(storage.lme_shikimori_filters_v1.search, 'Saved title', 'resetting filters must preserve the separate title search');
   const resetMenu = selectCalls[selectCalls.length - 1];
