@@ -466,7 +466,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   rootMenu.onSelect(sortGroup);
   const sortMenu = selectCalls[selectCalls.length - 1];
   assert.equal(sortMenu.title, 'Сортировка');
-  assert.equal(sortMenu.items.length, 6, 'sorting choices should be isolated from year and season');
+  assert.equal(sortMenu.items.length, 10, 'all sorting choices should be isolated from year and season');
   sortMenu.onBack();
 
   const rootAfterSort = selectCalls[selectCalls.length - 1];
@@ -488,12 +488,14 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const returnedRoot = selectCalls[selectCalls.length - 1];
   assert.equal(returnedRoot.title, 'Фильтры Shikimori');
   assert.equal(returnedRoot.items.find(item => item.group === 'year').subtitle, decadeChoice.title);
+  returnedRoot.onSelect(returnedRoot.items.find(item => item.group === 'season'));
+  const clearedSeasonMenu = selectCalls[selectCalls.length - 1];
   assert.ok(
-    returnedRoot.items.find(item => item.group === 'season').items
-      .every(item => item.code === '' || !item.selected),
+    clearedSeasonMenu.items.every(item => item.code === '' || !item.selected),
     'choosing a year should clear every specific season selection'
   );
-  const updatedRoot = returnedRoot;
+  clearedSeasonMenu.onBack();
+  const updatedRoot = selectCalls[selectCalls.length - 1];
   assert.equal(updatedRoot.items[0].subtitle, 'Активных условий: 2');
   assert.match(updatedRoot.items.find(item => item.group === 'year').subtitle, new RegExp(decadeChoice.title));
   const qualityGroup = updatedRoot.items.find(item => item.group === 'quality');
