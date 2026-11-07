@@ -419,7 +419,7 @@ function testGenreFilterHandlesSlowInitialLoad() {
 
 function testTvFriendlyFilterGroupsAndBackNavigation() {
   ajaxCalls.length = 0;
-  storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'ranked' };
+  storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'popularity' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
@@ -446,7 +446,8 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].kind, 'tv', 'title search should preserve the active anime-type filter');
-  assert.equal(activityPushCalls[activityPushCalls.length - 1].sort, 'ranked', 'title search should preserve the selected sort');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].sort, 'popularity', 'title search should preserve the selected sort');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].seasons, api.getSeason(new Date()), 'title search should preserve the current-season filter');
   assert.equal(selectCalls.length, filterMenusBeforeSearch, 'title search should not open the filter menu');
   filtersButton.handlers['hover:enter']();
 
@@ -454,7 +455,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
   assert.ok(rootMenu.items.length <= 7, 'filter menu should contain only filter actions and groups');
   assert.equal(rootMenu.items[0].title, 'Показать результаты');
-  assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 1');
+  assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 2', 'the selected type and default current season should both remain active');
   assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /TV Series/, 'group summary should show the standard anime-type label');
   assert.match(source, /title: 'OVA', code: 'ova'/, 'OVA should keep its standard label without an explanation');
   assert.match(source, /title: 'ONA', code: 'ona'/, 'ONA should keep its standard label without an explanation');
@@ -469,7 +470,9 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(seasonGroup.title, 'Сезон выхода');
   assert.equal(sortGroup.title, 'Сортировка');
   assert.equal(yearGroup.subtitle, 'Не выбрано');
-  assert.equal(seasonGroup.subtitle, 'Не выбрано');
+  const currentSeasonParts = api.getSeason(new Date()).split('_');
+  const seasonNames = { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' };
+  assert.equal(seasonGroup.subtitle, seasonNames[currentSeasonParts[0]] + ' ' + currentSeasonParts[1], 'the current season should remain visibly selected');
   assert.equal(sortGroup.subtitle, 'Не выбрано', 'default sorting should not look like an active filter');
 
   rootMenu.onSelect(sortGroup);
