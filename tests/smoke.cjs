@@ -16,6 +16,7 @@ const exportForTests = [
   '    Card: Card,',
   '    Component: Component$1,',
   '    getSeason: getSeason,',
+  '    runtimeCache: runtimeCache,',
   '    isHighConfidenceTmdbMatch: isHighConfidenceTmdbMatch,',
   '  };',
   startMarker
@@ -332,26 +333,37 @@ function testRestoredFiltersAreStableAcrossPages() {
     assert.equal(secondVariables[key], firstVariables[key], 'filter changed between pages for ' + key);
   });
   component.destroy();
+  const seasonNames = ['winter', 'spring', 'summer', 'fall'];
+  const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
+  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'popularity' }), 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
   storage.lme_shikimori_filters_v1 = {};
 }
 
 function testResetFiltersClearsCheckboxState() {
+  api.runtimeCache.genres = null;
   storage.lme_shikimori_filters_v1 = { kind: 'tv', status: 'ongoing', sort: 'ranked', genre: '1,2', search: 'Saved title' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
   const genresRequest = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/genres').pop();
   genresRequest.xhr.resolve([
-    { id: 1, entry_type: 'Anime', russian: 'Жанр один' },
-    { id: 2, entry_type: 'Anime', russian: 'Жанр два' }
+    { id: 1, entry_type: 'Anime', russian: 'Фэнтези' },
+    { id: 2, entry_type: 'Anime', russian: 'Комедия' },
+    { id: 3, entry_type: 'Anime', russian: 'Аниме жанр' },
+    { id: 4, entry_type: 'Anime', russian: 'Экшен' },
+    { id: 5, entry_type: 'Anime', russian: 'Драма' }
   ]);
 
   const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
   assert.ok(filtersButton && filtersButton.handlers['hover:enter']);
   filtersButton.handlers['hover:enter']();
   const filterMenu = selectCalls[selectCalls.length - 1];
-  assert.ok(filterMenu.items.length <= 6, 'top-level filter menu should stay compact for remote navigation');
+  assert.ok(filterMenu.items.length <= 7, 'top-level filter menu should stay compact for remote navigation');
   filterMenu.onSelect(filterMenu.items.find(item => item.resetFilters));
+  const seasonNames = ['winter', 'spring', 'summer', 'fall'];
+  const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
+  assert.equal(storage.lme_shikimori_filters_v1.seasons, currentSeason, 'resetting filters should restore the current season');
+  assert.equal(storage.lme_shikimori_filters_v1.sort, 'popularity', 'resetting filters should restore popularity sorting');
   assert.equal(storage.lme_shikimori_filters_v1.search, 'Saved title', 'resetting filters must preserve the separate title search');
   const resetMenu = selectCalls[selectCalls.length - 1];
   resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
@@ -362,23 +374,21 @@ function testResetFiltersClearsCheckboxState() {
   assert.ok(typeFilter.items.every(item => item.selected === false && item.checked === false));
   const genreFilter = basicMenu.items.find(item => item.title === 'Жанры');
   assert.ok(genreFilter.items.every(item => item.selected === false && item.checked === false));
-  const genreSearch = basicMenu.items.find(item => item.genreSearch);
-  assert.ok(genreSearch, 'basic filters should expose a direct genre search action');
-  basicMenu.onSelect(genreSearch);
-  assert.equal(lastInputEdit.options.title, 'Найти жанр');
-  lastInputEdit.callback('два');
-  const matchingGenres = selectCalls[selectCalls.length - 1];
-  assert.equal(matchingGenres.title, 'Найденные жанры');
-  assert.equal(matchingGenres.items.length, 1, 'genre search should limit the long list to matching names');
-  assert.equal(matchingGenres.items[0].title, 'Жанр два');
-  matchingGenres.items[0].checked = true;
-  matchingGenres.onCheck(matchingGenres.items[0]);
-  assert.equal(genreFilter.items.find(item => item.id === 2).selected, true, 'filtered genre selection should update the full genre state');
+  assert.ok(!basicMenu.items.some(item => item.genreSearch), 'genre selection should not require a text search');
+  basicMenu.onSelect(genreFilter);
+  const genreChoices = selectCalls[selectCalls.length - 1];
+  assert.equal(genreChoices.title, 'Жанры');
+  assert.equal(genreChoices.items.length, 5, 'opening genres should show the ready-made full list');
+  assert.deepEqual(genreChoices.items.map(item => item.title), ['Комедия', 'Драма', 'Фэнтези', 'Экшен', 'Аниме жанр'], 'popular genres should come first, followed by the remaining genres in Russian alphabetical order');
+  genreChoices.items[1].checked = true;
+  genreChoices.onCheck(genreChoices.items[1]);
+  assert.equal(genreFilter.items.find(item => item.id === 5).selected, true, 'filtered genre selection should update the full genre state');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }
 
 function testGenreFilterHandlesSlowInitialLoad() {
+  api.runtimeCache.genres = null;
   ajaxCalls.length = 0;
   notyCalls.length = 0;
   const component = new api.Component({ page: 1 });
@@ -409,7 +419,7 @@ function testGenreFilterHandlesSlowInitialLoad() {
 
 function testTvFriendlyFilterGroupsAndBackNavigation() {
   ajaxCalls.length = 0;
-  storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'ranked' };
+  storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'popularity' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
   component.create();
@@ -418,17 +428,18 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const contentController = controllerCollections.content;
   assert.ok(contentController && typeof contentController.back === 'function', 'catalogue controller must expose a Back handler');
   const backCallsBefore = activityBackwardCalls;
-  contentController.back();
-  assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
   const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
   const titleSearchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__title-search').pop();
+  const sortButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__sort').pop();
   const homeButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__home').pop();
   assert.ok(filtersButton && filtersButton.handlers['hover:enter'], 'filter entry must be reachable by remote activation');
   assert.ok(titleSearchButton && titleSearchButton.handlers['hover:enter'], 'title search must have its own remote button');
+  assert.ok(sortButton && sortButton.handlers['hover:enter'], 'sort must have its own remote button');
   assert.ok(homeButton && homeButton.handlers['hover:enter'], 'home button must be reachable by remote activation');
   assert.match(source, /Главная/);
   assert.match(source, /Поиск по названию/);
   assert.match(source, />Фильтры</);
+  assert.match(source, />Сортировка</);
   const filterMenusBeforeSearch = selectCalls.length;
   titleSearchButton.handlers['hover:enter']();
   assert.ok(lastInputEdit, 'title search button should open the text input directly');
@@ -438,14 +449,16 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(activityPushCalls.length, pushCountBeforeSearch + 1, 'title search should apply without opening the filters menu');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].search, 'Cowboy Bebop');
   assert.equal(activityPushCalls[activityPushCalls.length - 1].kind, 'tv', 'title search should preserve the active anime-type filter');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].sort, 'popularity', 'title search should preserve the selected sort');
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].seasons, api.getSeason(new Date()), 'title search should preserve the current-season filter');
   assert.equal(selectCalls.length, filterMenusBeforeSearch, 'title search should not open the filter menu');
   filtersButton.handlers['hover:enter']();
 
   const rootMenu = selectCalls[selectCalls.length - 1];
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
-  assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
+  assert.ok(rootMenu.items.length <= 7, 'filter menu should contain only filter actions and groups');
   assert.equal(rootMenu.items[0].title, 'Показать результаты');
-  assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 1');
+  assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 2', 'the selected type and default current season should both remain active');
   assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /TV Series/, 'group summary should show the standard anime-type label');
   assert.match(source, /title: 'OVA', code: 'ova'/, 'OVA should keep its standard label without an explanation');
   assert.match(source, /title: 'ONA', code: 'ona'/, 'ONA should keep its standard label without an explanation');
@@ -453,40 +466,56 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
   assert.equal(rootMenu.items.find(item => item.group === 'basic').title, 'Основное');
   assert.equal(rootMenu.items.find(item => item.group === 'quality').title, 'Рейтинг и формат');
-  const periodGroup = rootMenu.items.find(item => item.group === 'period');
-  assert.equal(periodGroup.title, 'Год и сортировка');
-  assert.equal(periodGroup.subtitle, 'Не выбрано', 'default sorting should not look like an active filter');
-  rootMenu.onSelect(periodGroup);
+  const yearGroup = rootMenu.items.find(item => item.group === 'year');
+  const seasonGroup = rootMenu.items.find(item => item.group === 'season');
+  assert.equal(yearGroup.title, 'Год выпуска');
+  assert.equal(seasonGroup.title, 'Сезон выхода');
+  assert.ok(!rootMenu.items.some(item => item.group === 'sort'), 'sorting must not appear inside the filters menu');
+  assert.ok(!rootMenu.items.some(item => item.title === 'Сортировка'), 'sorting must be an independent header action');
+  assert.equal(yearGroup.subtitle, 'Не выбрано');
+  const currentSeasonParts = api.getSeason(new Date()).split('_');
+  const seasonNames = { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' };
+  assert.equal(seasonGroup.subtitle, seasonNames[currentSeasonParts[0]] + ' ' + currentSeasonParts[1], 'the current season should remain visibly selected');
 
-  const periodMenu = selectCalls[selectCalls.length - 1];
-  assert.equal(periodMenu.title, 'Год и сортировка');
-  assert.equal(periodMenu.items.length, 3, 'year, season and sorting should be separate controls');
-  const yearFilter = periodMenu.items.find(item => item.title === 'Год выпуска');
-  const seasonFilter = periodMenu.items.find(item => item.title === 'Сезон выхода');
-  assert.ok(yearFilter && seasonFilter);
-  assert.equal(yearFilter.items[0].title, 'Любой год');
-  assert.equal(seasonFilter.items[0].title, 'Любой сезон');
-  assert.match(seasonFilter.items[1].title, /^(Зима|Весна|Лето|Осень) \d{4}$/);
-  periodMenu.onSelect(yearFilter);
+  sortButton.handlers['hover:enter']();
+  const sortMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(sortMenu.title, 'Сортировка');
+  assert.equal(sortMenu.items.length, 10, 'the independent sort menu should expose all 10 choices');
+  sortMenu.onSelect(sortMenu.items.find(item => item.code === 'aired_on'));
+  assert.equal(activityPushCalls[activityPushCalls.length - 1].sort, 'aired_on', 'choosing a sort should immediately apply it');
+  assert.equal(storage.lme_shikimori_filters_v1.sort, 'aired_on', 'the selected sort should persist independently of filters');
 
+  filtersButton.handlers['hover:enter']();
+  const rootAfterSort = selectCalls[selectCalls.length - 1];
+  const currentSeasonGroup = rootAfterSort.items.find(item => item.group === 'season');
+  rootAfterSort.onSelect(currentSeasonGroup);
+  const seasonMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(seasonMenu.title, 'Сезон выхода');
+  assert.equal(seasonMenu.items[0].title, 'Любой сезон');
+  assert.match(seasonMenu.items[1].title, /^(Зима|Весна|Лето|Осень) \d{4}$/);
+  seasonMenu.onBack();
+
+  const rootBeforeYear = selectCalls[selectCalls.length - 1];
+  rootBeforeYear.onSelect(yearGroup);
   const yearMenu = selectCalls[selectCalls.length - 1];
   assert.equal(yearMenu.title, 'Год выпуска');
+  assert.equal(yearMenu.items[0].title, 'Любой год');
   const decadeChoice = yearMenu.items.find(item => item.code);
   assert.ok(decadeChoice, 'year list should expose decade choices separately from seasons');
   yearMenu.onSelect(decadeChoice);
-  const returnedPeriod = selectCalls[selectCalls.length - 1];
-  assert.equal(returnedPeriod.title, 'Год и сортировка');
-  assert.equal(returnedPeriod.items.find(item => item.title === 'Год выпуска').subtitle, decadeChoice.title);
+  const returnedRoot = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedRoot.title, 'Фильтры Shikimori');
+  assert.equal(returnedRoot.items.find(item => item.group === 'year').subtitle, decadeChoice.title);
+  returnedRoot.onSelect(returnedRoot.items.find(item => item.group === 'season'));
+  const clearedSeasonMenu = selectCalls[selectCalls.length - 1];
   assert.ok(
-    returnedPeriod.items.find(item => item.title === 'Сезон выхода').items
-      .every(item => item.code === '' || !item.selected),
+    clearedSeasonMenu.items.every(item => item.code === '' || !item.selected),
     'choosing a year should clear every specific season selection'
   );
-  returnedPeriod.onBack();
-
+  clearedSeasonMenu.onBack();
   const updatedRoot = selectCalls[selectCalls.length - 1];
   assert.equal(updatedRoot.items[0].subtitle, 'Активных условий: 2');
-  assert.match(updatedRoot.items.find(item => item.group === 'period').subtitle, new RegExp(decadeChoice.title));
+  assert.match(updatedRoot.items.find(item => item.group === 'year').subtitle, new RegExp(decadeChoice.title));
   const qualityGroup = updatedRoot.items.find(item => item.group === 'quality');
   assert.ok(qualityGroup, 'quality group should be available');
   updatedRoot.onSelect(qualityGroup);
@@ -504,10 +533,20 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(returnedGroup.title, 'Рейтинг и формат', 'Back from a filter should return to its group');
   returnedGroup.onBack();
 
-  const returnedRoot = selectCalls[selectCalls.length - 1];
-  assert.equal(returnedRoot.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
-  returnedRoot.onBack();
+  const rootAfterGroup = selectCalls[selectCalls.length - 1];
+  assert.equal(rootAfterGroup.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
+  rootAfterGroup.onBack();
   assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
+
+  // Test catalogue Back only after search/filter assertions: Back exits the catalogue
+  // and intentionally resets the persisted state for the next visit.
+  contentController.back();
+  assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
+  const filtersAfterBack = storage.lme_shikimori_filters_v1;
+  assert.equal(filtersAfterBack.kind, undefined, 'Back should clear the selected anime type for the next visit');
+  assert.equal(filtersAfterBack.search, undefined, 'Back should clear the title query for the next visit');
+  assert.equal(filtersAfterBack.sort, 'popularity', 'Back should restore popularity sorting');
+  assert.equal(filtersAfterBack.seasons, api.getSeason(new Date()), 'Back should restore the current season');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }

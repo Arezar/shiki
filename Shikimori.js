@@ -552,7 +552,7 @@
     var items = [];
     var seenIds = {};
     var html = $("<div class='LMEShikimori-module'></div>");
-    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div></div>");
+    var head = $("<div class='LMEShikimori-head torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Главная</div><div class='LMEShikimori__title-search simple-button simple-button--filter selector'>Поиск по названию</div><div class='LMEShikimori__filters simple-button simple-button--filter selector'>Фильтры</div><div class='LMEShikimori__sort simple-button simple-button--filter selector'>Сортировка</div></div>");
     var body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
     var inited = false;
     var loading = false;
@@ -563,7 +563,8 @@
     var last = null;
     var self = this;
     var filterDefaults = Lampa.Storage.get(FILTERS_STORAGE_KEY, {}) || {};
-    var filterState = $.extend({}, filterDefaults, object);
+    var defaultFilterState = { seasons: getSeason(new Date()), sort: 'popularity' };
+    var filterState = $.extend({}, defaultFilterState, filterDefaults, object);
     var retryButton = null;
     var retryStatus = null;
     var loadingStatus = null;
@@ -728,7 +729,7 @@
       }
       var choice = selected[0];
       if (!choice || choice.code === '') return 'Не выбрано';
-      if (key === 'sort' && choice.code === 'ranked') return 'Не выбрано';
+      if (key === 'sort' && choice.code === 'popularity') return 'Не выбрано';
       return choice.title;
     }
 
@@ -761,8 +762,20 @@
         }).map(function (item) {
           return $.extend({}, item, { title: escapeHtml(item.russian || item.name || String(item.id)) });
         });
+        var popularGenres = ['приключения', 'комедия', 'драма', 'романтика', 'фэнтези', 'экшен', 'фантастика', 'повседневность', 'школа', 'сверхъестественное', 'спорт', 'детектив', 'триллер'];
         filters.genres.items = runtimeCache.genres.map(function (item) {
           return $.extend({}, item, { code: String(item.id), checkbox: true });
+        }).sort(function (a, b) {
+          var aTitle = String(a.title || '').toLocaleLowerCase('ru');
+          var bTitle = String(b.title || '').toLocaleLowerCase('ru');
+          var aPopular = popularGenres.indexOf(aTitle);
+          var bPopular = popularGenres.indexOf(bTitle);
+          if (aPopular !== -1 || bPopular !== -1) {
+            if (aPopular === -1) return 1;
+            if (bPopular === -1) return -1;
+            return aPopular - bPopular;
+          }
+          return aTitle.localeCompare(bTitle, 'ru');
         });
         if (!inited) return;
         restoreFilterSelection();
@@ -863,36 +876,9 @@
       });
     }
 
-    function openGenreSearch(onReturn) {
-      if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
-        Lampa.Noty.show('В этой версии Lampa недоступен поиск жанров');
-        return;
-      }
-      Lampa.Input.edit({
-        title: 'Найти жанр',
-        value: '',
-        free: true,
-        nosave: true
-      }, function (value) {
-        var query = String(value || '').trim();
-        if (!query) {
-          onReturn();
-          return;
-        }
-        openGenreFilter(onReturn, query);
-      });
-    }
-
     function openFilterGroup(title, keys, onReturn) {
       function showGroup() {
         var groupItems = [];
-        if (keys.indexOf('genres') !== -1) {
-          groupItems.push({
-            title: 'Найти жанр',
-            subtitle: 'Поиск по названию',
-            genreSearch: true
-          });
-        }
         keys.forEach(function (key) {
           selectedTitle(filters[key]);
           groupItems.push(filters[key]);
@@ -902,10 +888,6 @@
           items: groupItems,
           onBack: onReturn,
           onSelect: function (chosen) {
-            if (chosen && chosen.genreSearch) {
-              openGenreSearch(showGroup);
-              return;
-            }
             keys.some(function (key) {
               if (chosen !== filters[key]) return false;
               if (key === 'genres') openGenreFilter(showGroup);
@@ -935,6 +917,25 @@
       });
     }
 
+    function openSortMenu() {
+      var sortButton = head.find('.LMEShikimori__sort');
+      Lampa.Select.show({
+        title: 'Сортировка',
+        items: filters.sort.items,
+        onBack: function () {
+          last = sortButton;
+          Lampa.Controller.toggle('content');
+        },
+        onSelect: function (chosen) {
+          var value = chosen && chosen.code;
+          selectedSingle(filters.sort, value);
+          filterState.sort = value || 'popularity';
+          persistFilters();
+          applyFilters();
+        }
+      });
+    }
+
     function applyFilters() {
       var params = persistFilters();
       params.url = '';
@@ -946,16 +947,16 @@
 
     function resetFilters() {
       var currentSearch = String(filterState.search || '');
-      filterState = { search: currentSearch };
+      filterState = { search: currentSearch, seasons: getSeason(new Date()), sort: 'popularity' };
       Object.keys(filters).forEach(function (key) {
         filters[key].items.forEach(function (item) {
           item.selected = false;
           item.checked = false;
         });
       });
-      filterState.sort = 'ranked';
       filterState.genre = '';
-      selectedSingle(filters.sort, 'ranked');
+      selectedSingle(filters.sort, 'popularity');
+      selectedSingle(filters.season, filterState.seasons);
       Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
     }
@@ -967,16 +968,18 @@
           { title: 'Показать результаты', subtitle: 'Активных условий: ' + activeFilterCount(), applyFilters: true },
           { title: 'Основное', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
           { title: 'Рейтинг и формат', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
-          { title: 'Год и сортировка', subtitle: groupSummary(['year', 'season', 'sort']), group: 'period' },
+          { title: 'Год выпуска', subtitle: filterSummary('year'), group: 'year' },
+          { title: 'Сезон выхода', subtitle: filterSummary('season'), group: 'season' },
           { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
           if (chosen && chosen.applyFilters) applyFilters();
           else if (chosen && chosen.resetFilters) resetFilters();
-          else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
+          else if (chosen && chosen.group === 'basic') openFilterGroup('Основное', ['genres', 'type', 'status'], mainFilterMenu);
           else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
-          else if (chosen && chosen.group === 'period') openFilterGroup('Год и сортировка', ['year', 'season', 'sort'], mainFilterMenu);
+          else if (chosen && chosen.group === 'year') openSingleFilter('year', mainFilterMenu);
+          else if (chosen && chosen.group === 'season') openSingleFilter('season', mainFilterMenu);
         }
       });
     }
@@ -1123,6 +1126,11 @@
         last = titleSearchButton;
         openTitleSearch();
       });
+      var sortButton = head.find('.LMEShikimori__sort');
+      sortButton.off('hover:enter').on('hover:enter', function () {
+        last = sortButton;
+        openSortMenu();
+      });
       head.find('.LMEShikimori__home').off('hover:enter').on('hover:enter', function () {
         Lampa.Activity.push({ url: '', title: 'Shikimori', component: 'LMEShikimori', page: 1 });
       });
@@ -1173,6 +1181,9 @@
     };
 
     this.back = function () {
+      // Leaving the catalogue resets filters and title search to current-season/popularity defaults.
+      filterState = { seasons: getSeason(new Date()), sort: 'popularity' };
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       Lampa.Activity.backward();
     };
 
@@ -1208,6 +1219,9 @@
     };
 
     this.destroy = function () {
+      // Filters and title search are session-scoped: leaving the catalogue resets them.
+      // Keep the standalone sort preference, which is not a filter condition.
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { seasons: getSeason(new Date()), sort: 'popularity' });
       inited = false;
       loading = false;
       clearRetry();
