@@ -863,36 +863,9 @@
       });
     }
 
-    function openGenreSearch(onReturn) {
-      if (!Lampa.Input || typeof Lampa.Input.edit !== 'function') {
-        Lampa.Noty.show('В этой версии Lampa недоступен поиск жанров');
-        return;
-      }
-      Lampa.Input.edit({
-        title: 'Найти жанр',
-        value: '',
-        free: true,
-        nosave: true
-      }, function (value) {
-        var query = String(value || '').trim();
-        if (!query) {
-          onReturn();
-          return;
-        }
-        openGenreFilter(onReturn, query);
-      });
-    }
-
     function openFilterGroup(title, keys, onReturn) {
       function showGroup() {
         var groupItems = [];
-        if (keys.indexOf('genres') !== -1) {
-          groupItems.push({
-            title: 'Найти жанр',
-            subtitle: 'Поиск по названию',
-            genreSearch: true
-          });
-        }
         keys.forEach(function (key) {
           selectedTitle(filters[key]);
           groupItems.push(filters[key]);
@@ -902,10 +875,6 @@
           items: groupItems,
           onBack: onReturn,
           onSelect: function (chosen) {
-            if (chosen && chosen.genreSearch) {
-              openGenreSearch(showGroup);
-              return;
-            }
             keys.some(function (key) {
               if (chosen !== filters[key]) return false;
               if (key === 'genres') openGenreFilter(showGroup);
