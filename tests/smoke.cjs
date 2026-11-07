@@ -15,7 +15,8 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
-  '    getSeason: getSeason,',
+  '    getSeason: getSeason,
+    runtimeCache: runtimeCache,',
   '    isHighConfidenceTmdbMatch: isHighConfidenceTmdbMatch,',
   '  };',
   startMarker
@@ -339,6 +340,7 @@ function testRestoredFiltersAreStableAcrossPages() {
 }
 
 function testResetFiltersClearsCheckboxState() {
+  api.runtimeCache.genres = null;
   storage.lme_shikimori_filters_v1 = { kind: 'tv', status: 'ongoing', sort: 'ranked', genre: '1,2', search: 'Saved title' };
   const component = new api.Component({ page: 1 });
   component.activity = { loader() {}, toggle() {} };
@@ -386,6 +388,7 @@ function testResetFiltersClearsCheckboxState() {
 }
 
 function testGenreFilterHandlesSlowInitialLoad() {
+  api.runtimeCache.genres = null;
   ajaxCalls.length = 0;
   notyCalls.length = 0;
   const component = new api.Component({ page: 1 });
