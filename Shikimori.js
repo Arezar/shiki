@@ -978,8 +978,8 @@
           else if (chosen && chosen.resetFilters) resetFilters();
           else if (chosen && chosen.group === 'basic') openFilterGroup('Основное', ['genres', 'type', 'status'], mainFilterMenu);
           else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
-          else if (chosen && chosen.group === 'year') openFilterGroup('Год выпуска', ['year'], mainFilterMenu);
-          else if (chosen && chosen.group === 'season') openFilterGroup('Сезон выхода', ['season'], mainFilterMenu);
+          else if (chosen && chosen.group === 'year') openSingleFilter('year', mainFilterMenu);
+          else if (chosen && chosen.group === 'season') openSingleFilter('season', mainFilterMenu);
         }
       });
     }
