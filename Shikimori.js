@@ -967,16 +967,20 @@
           { title: 'Показать результаты', subtitle: 'Активных условий: ' + activeFilterCount(), applyFilters: true },
           { title: 'Основное', subtitle: groupSummary(['genres', 'type', 'status']), group: 'basic' },
           { title: 'Рейтинг и формат', subtitle: groupSummary(['score', 'rating', 'duration']), group: 'quality' },
-          { title: 'Год и сортировка', subtitle: groupSummary(['year', 'season', 'sort']), group: 'period' },
+          { title: 'Год выпуска', subtitle: filterSummary('year'), group: 'year' },
+          { title: 'Сезон выхода', subtitle: filterSummary('season'), group: 'season' },
+          { title: 'Сортировка', subtitle: filterSummary('sort'), group: 'sort' },
           { title: 'Сбросить фильтры', resetFilters: true }
         ],
         onBack: function () { Lampa.Controller.toggle('content'); },
         onSelect: function (chosen) {
           if (chosen && chosen.applyFilters) applyFilters();
           else if (chosen && chosen.resetFilters) resetFilters();
-          else if (chosen && chosen.group === 'basic') openFilterGroup('Основные параметры', ['genres', 'type', 'status'], mainFilterMenu);
+          else if (chosen && chosen.group === 'basic') openFilterGroup('Основное', ['genres', 'type', 'status'], mainFilterMenu);
           else if (chosen && chosen.group === 'quality') openFilterGroup('Рейтинг и формат', ['score', 'rating', 'duration'], mainFilterMenu);
-          else if (chosen && chosen.group === 'period') openFilterGroup('Год и сортировка', ['year', 'season', 'sort'], mainFilterMenu);
+          else if (chosen && chosen.group === 'year') openFilterGroup('Год выпуска', ['year'], mainFilterMenu);
+          else if (chosen && chosen.group === 'season') openFilterGroup('Сезон выхода', ['season'], mainFilterMenu);
+          else if (chosen && chosen.group === 'sort') openFilterGroup('Сортировка', ['sort'], mainFilterMenu);
         }
       });
     }
