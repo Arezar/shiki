@@ -428,8 +428,6 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const contentController = controllerCollections.content;
   assert.ok(contentController && typeof contentController.back === 'function', 'catalogue controller must expose a Back handler');
   const backCallsBefore = activityBackwardCalls;
-  contentController.back();
-  assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
   const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
   const titleSearchButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__title-search').pop();
   const homeButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__home').pop();
@@ -530,6 +528,16 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(rootAfterGroup.title, 'Фильтры Shikimori', 'Back from a group should return to the filter root');
   rootAfterGroup.onBack();
   assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
+
+  // Test catalogue Back only after search/filter assertions: Back exits the catalogue
+  // and intentionally resets the persisted state for the next visit.
+  contentController.back();
+  assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
+  const filtersAfterBack = storage.lme_shikimori_filters_v1;
+  assert.equal(filtersAfterBack.kind, undefined, 'Back should clear the selected anime type for the next visit');
+  assert.equal(filtersAfterBack.search, undefined, 'Back should clear the title query for the next visit');
+  assert.equal(filtersAfterBack.sort, 'popularity', 'Back should restore popularity sorting');
+  assert.equal(filtersAfterBack.seasons, api.getSeason(new Date()), 'Back should restore the current season');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }
