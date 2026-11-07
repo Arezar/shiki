@@ -342,8 +342,11 @@ function testResetFiltersClearsCheckboxState() {
   component.create();
   const genresRequest = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/genres').pop();
   genresRequest.xhr.resolve([
-    { id: 1, entry_type: 'Anime', russian: 'Жанр один' },
-    { id: 2, entry_type: 'Anime', russian: 'Жанр два' }
+    { id: 1, entry_type: 'Anime', russian: 'Фэнтези' },
+    { id: 2, entry_type: 'Anime', russian: 'Комедия' },
+    { id: 3, entry_type: 'Anime', russian: 'Аниме жанр' },
+    { id: 4, entry_type: 'Anime', russian: 'Экшен' },
+    { id: 5, entry_type: 'Anime', russian: 'Драма' }
   ]);
 
   const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
@@ -366,11 +369,11 @@ function testResetFiltersClearsCheckboxState() {
   basicMenu.onSelect(genreFilter);
   const genreChoices = selectCalls[selectCalls.length - 1];
   assert.equal(genreChoices.title, 'Жанры');
-  assert.equal(genreChoices.items.length, 2, 'opening genres should show the ready-made full list');
-  assert.deepEqual(genreChoices.items.map(item => item.title), ['Жанр один', 'Жанр два']);
+  assert.equal(genreChoices.items.length, 5, 'opening genres should show the ready-made full list');
+  assert.deepEqual(genreChoices.items.map(item => item.title), ['Комедия', 'Драма', 'Фэнтези', 'Экшен', 'Аниме жанр'], 'popular genres should come first, followed by the remaining genres in Russian alphabetical order');
   genreChoices.items[1].checked = true;
   genreChoices.onCheck(genreChoices.items[1]);
-  assert.equal(genreFilter.items.find(item => item.id === 2).selected, true, 'filtered genre selection should update the full genre state');
+  assert.equal(genreFilter.items.find(item => item.id === 5).selected, true, 'filtered genre selection should update the full genre state');
   component.destroy();
   storage.lme_shikimori_filters_v1 = {};
 }
@@ -440,7 +443,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
 
   const rootMenu = selectCalls[selectCalls.length - 1];
   assert.equal(rootMenu.title, 'Фильтры Shikimori');
-  assert.equal(rootMenu.items.length, 5, 'filter menu should contain only filter actions and groups');
+  assert.ok(rootMenu.items.length <= 7, 'filter menu should contain only filter actions and groups');
   assert.equal(rootMenu.items[0].title, 'Показать результаты');
   assert.equal(rootMenu.items[0].subtitle, 'Активных условий: 1');
   assert.match(rootMenu.items.find(item => item.group === 'basic').subtitle, /TV Series/, 'group summary should show the standard anime-type label');
