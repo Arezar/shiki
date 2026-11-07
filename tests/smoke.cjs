@@ -15,8 +15,8 @@ const exportForTests = [
   '    main: main,',
   '    Card: Card,',
   '    Component: Component$1,',
-  '    getSeason: getSeason,
-    runtimeCache: runtimeCache,',
+  '    getSeason: getSeason,',
+  '    runtimeCache: runtimeCache,',
   '    isHighConfidenceTmdbMatch: isHighConfidenceTmdbMatch,',
   '  };',
   startMarker
