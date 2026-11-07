@@ -453,40 +453,49 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.ok(rootMenu.items.every(item => !/^(Home|Filters|Search|Apply|Reset)$/i.test(item.title)), 'filter actions should use Russian labels');
   assert.equal(rootMenu.items.find(item => item.group === 'basic').title, 'Основное');
   assert.equal(rootMenu.items.find(item => item.group === 'quality').title, 'Рейтинг и формат');
-  const periodGroup = rootMenu.items.find(item => item.group === 'period');
-  assert.equal(periodGroup.title, 'Год и сортировка');
-  assert.equal(periodGroup.subtitle, 'Не выбрано', 'default sorting should not look like an active filter');
-  rootMenu.onSelect(periodGroup);
+  const yearGroup = rootMenu.items.find(item => item.group === 'year');
+  const seasonGroup = rootMenu.items.find(item => item.group === 'season');
+  const sortGroup = rootMenu.items.find(item => item.group === 'sort');
+  assert.equal(yearGroup.title, 'Год выпуска');
+  assert.equal(seasonGroup.title, 'Сезон выхода');
+  assert.equal(sortGroup.title, 'Сортировка');
+  assert.equal(yearGroup.subtitle, 'Не выбрано');
+  assert.equal(seasonGroup.subtitle, 'Не выбрано');
+  assert.equal(sortGroup.subtitle, 'Не выбрано', 'default sorting should not look like an active filter');
 
-  const periodMenu = selectCalls[selectCalls.length - 1];
-  assert.equal(periodMenu.title, 'Год и сортировка');
-  assert.equal(periodMenu.items.length, 3, 'year, season and sorting should be separate controls');
-  const yearFilter = periodMenu.items.find(item => item.title === 'Год выпуска');
-  const seasonFilter = periodMenu.items.find(item => item.title === 'Сезон выхода');
-  assert.ok(yearFilter && seasonFilter);
-  assert.equal(yearFilter.items[0].title, 'Любой год');
-  assert.equal(seasonFilter.items[0].title, 'Любой сезон');
-  assert.match(seasonFilter.items[1].title, /^(Зима|Весна|Лето|Осень) \d{4}$/);
-  periodMenu.onSelect(yearFilter);
+  rootMenu.onSelect(sortGroup);
+  const sortMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(sortMenu.title, 'Сортировка');
+  assert.equal(sortMenu.items.length, 6, 'sorting choices should be isolated from year and season');
+  sortMenu.onBack();
 
+  const rootAfterSort = selectCalls[selectCalls.length - 1];
+  rootAfterSort.onSelect(seasonGroup);
+  const seasonMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(seasonMenu.title, 'Сезон выхода');
+  assert.equal(seasonMenu.items[0].title, 'Любой сезон');
+  assert.match(seasonMenu.items[1].title, /^(Зима|Весна|Лето|Осень) \\d{4}$/);
+  seasonMenu.onBack();
+
+  const rootBeforeYear = selectCalls[selectCalls.length - 1];
+  rootBeforeYear.onSelect(yearGroup);
   const yearMenu = selectCalls[selectCalls.length - 1];
   assert.equal(yearMenu.title, 'Год выпуска');
+  assert.equal(yearMenu.items[0].title, 'Любой год');
   const decadeChoice = yearMenu.items.find(item => item.code);
   assert.ok(decadeChoice, 'year list should expose decade choices separately from seasons');
   yearMenu.onSelect(decadeChoice);
-  const returnedPeriod = selectCalls[selectCalls.length - 1];
-  assert.equal(returnedPeriod.title, 'Год и сортировка');
-  assert.equal(returnedPeriod.items.find(item => item.title === 'Год выпуска').subtitle, decadeChoice.title);
+  const returnedRoot = selectCalls[selectCalls.length - 1];
+  assert.equal(returnedRoot.title, 'Фильтры Shikimori');
+  assert.equal(returnedRoot.items.find(item => item.group === 'year').subtitle, decadeChoice.title);
   assert.ok(
-    returnedPeriod.items.find(item => item.title === 'Сезон выхода').items
+    returnedRoot.items.find(item => item.group === 'season').items
       .every(item => item.code === '' || !item.selected),
     'choosing a year should clear every specific season selection'
   );
-  returnedPeriod.onBack();
-
-  const updatedRoot = selectCalls[selectCalls.length - 1];
+  const updatedRoot = returnedRoot;
   assert.equal(updatedRoot.items[0].subtitle, 'Активных условий: 2');
-  assert.match(updatedRoot.items.find(item => item.group === 'period').subtitle, new RegExp(decadeChoice.title));
+  assert.match(updatedRoot.items.find(item => item.group === 'year').subtitle, new RegExp(decadeChoice.title));
   const qualityGroup = updatedRoot.items.find(item => item.group === 'quality');
   assert.ok(qualityGroup, 'quality group should be available');
   updatedRoot.onSelect(qualityGroup);
