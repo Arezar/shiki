@@ -576,7 +576,9 @@
       var currentDecade = Math.floor(now.getFullYear() / 10) * 10;
       var ranges = [];
       for (var decade = currentDecade; decade >= 1980; decade -= 10) {
-        var code = decade >= 2000 ? decade + '_' + (decade + 9) : decade + 'x';
+        // Shikimori accepts ranges (2010_2019) and 3-digit decades (199x, 198x);
+        // codes like "1990x" are rejected by the API with InvalidParameterError.
+        var code = decade >= 2000 ? decade + '_' + (decade + 9) : Math.floor(decade / 10) + 'x';
         ranges.push({ title: decade + '-е', code: code });
       }
       ranges.push({ title: 'До 1980-х', code: 'ancient' });
@@ -682,6 +684,27 @@
         ]
       }
     };
+
+    // Legacy storage may contain season/sort codes that Shikimori rejects
+    // (e.g. "1990x" from older year-filter versions), which fails the whole
+    // catalogue request with InvalidParameterError. Reset unknown values to
+    // the current-season/popularity defaults so a poisoned storage self-heals.
+    function sanitizeFilterState() {
+      var seasonCodes = {};
+      filters.year.items.concat(filters.season.items).forEach(function (item) {
+        if (item && item.code != null) seasonCodes[String(item.code)] = true;
+      });
+      if (!seasonCodes[String(filterState.seasons == null ? '' : filterState.seasons)]) {
+        filterState.seasons = defaultFilterState.seasons;
+      }
+      var sortCodes = {};
+      filters.sort.items.forEach(function (item) {
+        if (item && item.code != null) sortCodes[String(item.code)] = true;
+      });
+      if (!sortCodes[String(filterState.sort == null ? '' : filterState.sort)]) {
+        filterState.sort = defaultFilterState.sort;
+      }
+    }
 
     function restoreFilterSelection() {
       var singleValues = {
@@ -1050,6 +1073,7 @@
     this.create = function () {
       var _this = this;
       inited = true;
+      sanitizeFilterState();
       restoreFilterSelection();
       this.activity.loader(true);
       this.headeraction();
