@@ -500,6 +500,10 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const yearMenu = selectCalls[selectCalls.length - 1];
   assert.equal(yearMenu.title, 'Год выпуска');
   assert.equal(yearMenu.items[0].title, 'Любой год');
+  assert.equal(yearMenu.items.find(item => item.title === '2020-е').code, '2020_2029', '2000+ decades use year ranges');
+  assert.equal(yearMenu.items.find(item => item.title === '1990-е').code, '199x', 'pre-2000 decades must use the 3-digit format accepted by Shikimori');
+  assert.equal(yearMenu.items.find(item => item.title === '1980-е').code, '198x', 'pre-2000 decades must use the 3-digit format accepted by Shikimori');
+  assert.ok(yearMenu.items.every(item => item.code === '' || item.code === 'ancient' || /^\d{4}_\d{4}$/.test(item.code) || /^\d{3}x$/.test(item.code)), 'every year code must match a season format accepted by Shikimori');
   const decadeChoice = yearMenu.items.find(item => item.code);
   assert.ok(decadeChoice, 'year list should expose decade choices separately from seasons');
   yearMenu.onSelect(decadeChoice);
@@ -668,9 +672,30 @@ function testLegacyCardFallbackSafety() {
   assert.match(source, /onCheck: function \(chosen\)/, 'genre filters should use checkbox callbacks');
 }
 
+function testLegacyInvalidFilterStorageIsSanitized() {
+  ajaxCalls.length = 0;
+  api.runtimeCache.genres = null;
+  storage.lme_shikimori_filters_v1 = { seasons: '1990x', sort: 'not-a-real-sort' };
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const request = ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql').pop();
+  assert.ok(request, 'catalogue request should start even with poisoned legacy storage');
+  const variables = JSON.parse(request.options.data).variables;
+  const seasonNames = ['winter', 'spring', 'summer', 'fall'];
+  const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
+  assert.equal(variables.season, currentSeason, 'legacy invalid decade codes must fall back to the current season instead of failing the request');
+  assert.equal(variables.order, 'popularity', 'unknown sort values must fall back to popularity');
+
+  component.destroy();
+  storage.lme_shikimori_filters_v1 = {};
+}
+
 testSeasonBoundariesAndTmdbMatchConfidence();
 testRequestCancellation();
 testGraphQLVariablesAndFilterCoverage();
+testLegacyInvalidFilterStorageIsSanitized();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testGenreFilterHandlesSlowInitialLoad();
@@ -683,4 +708,4 @@ testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (13 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (14 groups)\n');
