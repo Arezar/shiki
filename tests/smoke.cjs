@@ -417,6 +417,61 @@ function testGenreFilterHandlesSlowInitialLoad() {
   component.destroy();
 }
 
+
+function testGenreFilterCanRetryAfterApiFailure() {
+  api.runtimeCache.genres = null;
+  ajaxCalls.length = 0;
+  selectCalls.length = 0;
+  notyCalls.length = 0;
+  storage.lme_shikimori_filters_v1 = { genre: '2' };
+
+  const component = new api.Component({ page: 1 });
+  component.activity = { loader() {}, toggle() {} };
+  component.create();
+
+  const genreRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/genres');
+  assert.equal(genreRequests().length, 1, 'catalogue opening should start the initial genre request');
+  genreRequests()[0].xhr.reject(503, { message: 'Service unavailable' });
+  assert.equal(genreRequests().length, 2, 'genre loading should keep its first automatic retry');
+  genreRequests()[1].xhr.reject(503, { message: 'Service unavailable' });
+  assert.equal(genreRequests().length, 3, 'genre loading should keep its second automatic retry');
+  genreRequests()[2].xhr.reject(503, { message: 'Service unavailable' });
+
+  const filtersButton = jqueryInstances.filter(item => item.selector === '.LMEShikimori__filters').pop();
+  assert.ok(filtersButton && filtersButton.handlers['hover:enter']);
+  filtersButton.handlers['hover:enter']();
+  const rootMenu = selectCalls[selectCalls.length - 1];
+  rootMenu.onSelect(rootMenu.items.find(item => item.group === 'basic'));
+  const basicMenu = selectCalls[selectCalls.length - 1];
+  basicMenu.onSelect(basicMenu.items.find(item => item.title === 'Жанры'));
+
+  const retryMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(retryMenu.title, 'Не удалось загрузить жанры');
+  assert.equal(retryMenu.items.length, 1);
+  assert.equal(retryMenu.items[0].title, 'Повторить загрузку жанров', 'failed genre loading should offer a direct retry instead of requiring a catalogue restart');
+  retryMenu.onBack();
+  assert.equal(selectCalls[selectCalls.length - 1].title, 'Основное', 'Back from the retry prompt should return to the filter group');
+
+  const returnedGroup = selectCalls[selectCalls.length - 1];
+  returnedGroup.onSelect(returnedGroup.items.find(item => item.title === 'Жанры'));
+  const retryAgainMenu = selectCalls[selectCalls.length - 1];
+  retryAgainMenu.onSelect(retryAgainMenu.items[0]);
+  assert.equal(genreRequests().length, 4, 'choosing retry should start a fresh genre request');
+
+  genreRequests()[3].xhr.resolve([
+    { id: 2, entry_type: 'Anime', russian: 'Комедия' },
+    { id: 7, entry_type: 'Anime', russian: 'Фантастика' }
+  ]);
+  const loadedGenres = selectCalls[selectCalls.length - 1];
+  assert.equal(loadedGenres.title, 'Жанры', 'successful retry should reopen the genre choices automatically');
+  assert.equal(loadedGenres.items.length, 2);
+  assert.equal(loadedGenres.items.find(item => item.id === 2).selected, true, 'retry should restore the previously selected genre');
+
+  component.destroy();
+  api.runtimeCache.genres = null;
+  storage.lme_shikimori_filters_v1 = {};
+}
+
 function testTvFriendlyFilterGroupsAndBackNavigation() {
   ajaxCalls.length = 0;
   storage.lme_shikimori_filters_v1 = { kind: 'tv', sort: 'popularity' };
@@ -699,6 +754,7 @@ testLegacyInvalidFilterStorageIsSanitized();
 testNativeCardBadgesAndIdIsolation();
 testRestoredFiltersAreStableAcrossPages();
 testGenreFilterHandlesSlowInitialLoad();
+testGenreFilterCanRetryAfterApiFailure();
 testResetFiltersClearsCheckboxState();
 testTvFriendlyFilterGroupsAndBackNavigation();
 testPaginationDeduplicationAndDestroy();
@@ -708,4 +764,4 @@ testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (14 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (16 groups)\n');
