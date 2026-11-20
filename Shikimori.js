@@ -1046,8 +1046,10 @@
         self.activity.loader(true);
         loadPage(page, true);
       });
-      body.prepend(retryButton);
-      body.prepend(retryStatus);
+      // Keep pagination errors after the loaded cards so the retry action follows
+      // the list naturally and remains reachable at its end with a TV remote.
+      body.append(retryStatus);
+      body.append(retryButton);
       last = retryButton;
       self.activity.loader(false);
       self.activity.toggle();
