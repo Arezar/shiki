@@ -751,4 +751,4 @@ testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (15 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (16 groups)\n');
