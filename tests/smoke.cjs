@@ -638,6 +638,48 @@ function testCatalogueRetryAfterInitialFailure() {
   component.destroy();
 }
 
+function testPaginationRetryStaysAfterExistingCardsAndRestoresFocus() {
+  ajaxCalls.length = 0;
+  const component = new api.Component({ page: 1 });
+  component.activity = {
+    loader() {},
+    toggle() {
+      if (controllerCollections.content) controllerCollections.content.toggle();
+    }
+  };
+  component.create();
+  component.start();
+
+  const body = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori-catalog--list') !== -1).pop();
+  const graphqlRequests = () => ajaxCalls.filter(item => item.options.url === 'https://shikimori.one/api/graphql');
+  const firstBatch = Array.from({ length: 36 }, (_, index) => ({ id: index + 1, name: 'Anime ' + (index + 1) }));
+  graphqlRequests()[0].xhr.resolve({ data: { animes: firstBatch } });
+  assert.equal(body.nodes.length, 36, 'the first page should remain visible before loading more');
+  const lastLoadedCard = body.nodes[body.nodes.length - 1];
+
+  scrollInstances[scrollInstances.length - 1].onEnd();
+  assert.equal(graphqlRequests().length, 2, 'reaching the end should request the next page');
+  graphqlRequests()[1].xhr.reject(503, { message: 'Service unavailable' });
+
+  const retryStatus = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__retry-info') !== -1).pop();
+  const retryButton = jqueryInstances.filter(item => String(item.selector).indexOf('LMEShikimori__retry">') !== -1).pop();
+  assert.ok(retryStatus && retryButton, 'a failed next page should expose an inline retry action');
+  assert.equal(body.nodes[body.nodes.length - 2], retryStatus, 'the pagination error should follow the already loaded cards');
+  assert.equal(body.nodes[body.nodes.length - 1], retryButton, 'the retry action should be the final item in the list');
+  assert.equal(lastCollectionFocus, retryButton, 'remote focus should move directly to the pagination retry action');
+
+  retryButton.handlers['hover:enter']();
+  assert.equal(graphqlRequests().length, 3, 'retry should issue a fresh request without discarding the first page');
+  const retryRequest = graphqlRequests()[2];
+  assert.equal(JSON.parse(retryRequest.options.data).variables.page, 2, 'retry should request the same failed page');
+  assert.ok(!body.nodes.includes(retryStatus) && !body.nodes.includes(retryButton), 'retry controls should disappear while the request is running');
+
+  retryRequest.xhr.resolve({ data: { animes: [{ id: 37, name: 'Anime 37' }] } });
+  assert.equal(body.nodes.length, 37, 'successful retry should append results without rebuilding the loaded page');
+  assert.equal(lastCollectionFocus, lastLoadedCard, 'after retry, focus should return to the last previously loaded card');
+  component.destroy();
+}
+
 function testTmdbAdultSearchFlagRemainsEnabled() {
   assert.match(source, /&include_adult=true&query=/, 'TMDB fallback search should preserve the existing include_adult=true behavior');
 }
@@ -704,8 +746,9 @@ testTvFriendlyFilterGroupsAndBackNavigation();
 testPaginationDeduplicationAndDestroy();
 testEmptyRestoredPage();
 testCatalogueRetryAfterInitialFailure();
+testPaginationRetryStaysAfterExistingCardsAndRestoresFocus();
 testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (14 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (15 groups)\n');
