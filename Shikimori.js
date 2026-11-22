@@ -776,7 +776,11 @@
       });
     }
 
-    function loadGenres() {
+    function loadGenres(onComplete) {
+      function finish(success) {
+        if (typeof onComplete === 'function') onComplete(success);
+      }
+
       function ready(response) {
         genresLoaded = true;
         genresLoadFailed = false;
@@ -802,6 +806,7 @@
         });
         if (!inited) return;
         restoreFilterSelection();
+        finish(true);
       }
       if (runtimeCache.genres) ready(runtimeCache.genres);
       else {
@@ -815,7 +820,8 @@
               genresLoaded = true;
               genresLoadFailed = true;
               console.warn('Shikimori: не удалось загрузить жанры', error);
-              Lampa.Noty.show('Не удалось загрузить жанры Shikimori. Повторите открытие фильтров позже.');
+              Lampa.Noty.show('Не удалось загрузить жанры Shikimori. Можно повторить попытку в меню жанров.');
+              finish(false);
             }
           });
         }
@@ -874,14 +880,26 @@
       if (!visibleItems.length) {
         if (!genresLoaded) {
           Lampa.Noty.show('Список жанров ещё загружается. Попробуйте немного позже.');
+          onReturn();
         }
         else if (genresLoadFailed) {
-          Lampa.Noty.show('Не удалось загрузить список жанров. Закройте и откройте каталог повторно.');
+          Lampa.Select.show({
+            title: 'Не удалось загрузить жанры',
+            items: [{ title: 'Повторить загрузку жанров', retryGenres: true }],
+            onBack: onReturn,
+            onSelect: function (chosen) {
+              if (!chosen || !chosen.retryGenres) return;
+              Lampa.Noty.show('Повторная загрузка жанров Shikimori…');
+              loadGenres(function () {
+                openGenreFilter(onReturn, query);
+              });
+            }
+          });
         }
         else {
           Lampa.Noty.show('Жанры не найдены');
+          onReturn();
         }
-        onReturn();
         return;
       }
 
