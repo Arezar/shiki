@@ -988,7 +988,8 @@
 
     function resetFilters() {
       var currentSearch = String(filterState.search || '');
-      filterState = { search: currentSearch, seasons: getSeason(new Date()), sort: 'popularity' };
+      var currentSort = filterState.sort || defaultFilterState.sort;
+      filterState = { search: currentSearch, seasons: getSeason(new Date()), sort: currentSort };
       Object.keys(filters).forEach(function (key) {
         filters[key].items.forEach(function (item) {
           item.selected = false;
@@ -996,7 +997,7 @@
         });
       });
       filterState.genre = '';
-      selectedSingle(filters.sort, 'popularity');
+      selectedSingle(filters.sort, filterState.sort);
       selectedSingle(filters.season, filterState.seasons);
       Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       mainFilterMenu();
@@ -1225,8 +1226,9 @@
     };
 
     this.back = function () {
-      // Leaving the catalogue resets filters and title search to current-season/popularity defaults.
-      filterState = { seasons: getSeason(new Date()), sort: 'popularity' };
+      // Leaving the catalogue clears filters and title search but keeps the standalone sort choice.
+      var currentSort = filterState.sort || defaultFilterState.sort;
+      filterState = { seasons: getSeason(new Date()), sort: currentSort };
       Lampa.Storage.set(FILTERS_STORAGE_KEY, buildFilterParams());
       Lampa.Activity.backward();
     };
@@ -1263,9 +1265,9 @@
     };
 
     this.destroy = function () {
-      // Filters and title search are session-scoped: leaving the catalogue resets them.
-      // Keep the standalone sort preference, which is not a filter condition.
-      Lampa.Storage.set(FILTERS_STORAGE_KEY, { seasons: getSeason(new Date()), sort: 'popularity' });
+      // Filters and title search are session-scoped; standalone sorting remains a preference.
+      var currentSort = filterState.sort || defaultFilterState.sort;
+      Lampa.Storage.set(FILTERS_STORAGE_KEY, { seasons: getSeason(new Date()), sort: currentSort });
       inited = false;
       loading = false;
       clearRetry();
