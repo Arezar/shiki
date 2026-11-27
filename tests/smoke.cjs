@@ -335,7 +335,7 @@ function testRestoredFiltersAreStableAcrossPages() {
   component.destroy();
   const seasonNames = ['winter', 'spring', 'summer', 'fall'];
   const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
-  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'popularity' }), 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
+  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'ranked' }), 'leaving the catalogue should reset filter/search state but preserve standalone sorting');
   storage.lme_shikimori_filters_v1 = {};
 }
 
@@ -363,7 +363,7 @@ function testResetFiltersClearsCheckboxState() {
   const seasonNames = ['winter', 'spring', 'summer', 'fall'];
   const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
   assert.equal(storage.lme_shikimori_filters_v1.seasons, currentSeason, 'resetting filters should restore the current season');
-  assert.equal(storage.lme_shikimori_filters_v1.sort, 'popularity', 'resetting filters should restore popularity sorting');
+  assert.equal(storage.lme_shikimori_filters_v1.sort, 'ranked', 'resetting filters must preserve the standalone sort preference');
   assert.equal(storage.lme_shikimori_filters_v1.search, 'Saved title', 'resetting filters must preserve the separate title search');
   const resetMenu = selectCalls[selectCalls.length - 1];
   resetMenu.onSelect(resetMenu.items.find(item => item.group === 'basic'));
@@ -533,6 +533,12 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   assert.equal(seasonGroup.subtitle, seasonNames[currentSeasonParts[0]] + ' ' + currentSeasonParts[1], 'the current season should remain visibly selected');
 
   sortButton.handlers['hover:enter']();
+  const sortBackMenu = selectCalls[selectCalls.length - 1];
+  assert.equal(sortBackMenu.title, 'Сортировка');
+  sortBackMenu.onBack();
+  assert.equal(lastCollectionFocus && lastCollectionFocus.selector, sortButton.selector, 'Back from sorting should restore focus to the Sort button');
+
+  sortButton.handlers['hover:enter']();
   const sortMenu = selectCalls[selectCalls.length - 1];
   assert.equal(sortMenu.title, 'Сортировка');
   assert.equal(sortMenu.items.length, 10, 'the independent sort menu should expose all 10 choices');
@@ -597,16 +603,17 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   rootAfterGroup.onBack();
   assert.equal(lastCollectionFocus, filtersButton, 'Back out of filters should restore focus to the Filters button');
 
-  // Test catalogue Back only after search/filter assertions: Back exits the catalogue
-  // and intentionally resets the persisted state for the next visit.
+  // Test catalogue Back only after search/filter assertions: filter conditions and title
+  // search reset for the next visit, while the independent sort preference is retained.
   contentController.back();
   assert.equal(activityBackwardCalls, backCallsBefore + 1, 'Back must return through Lampa activity history');
   const filtersAfterBack = storage.lme_shikimori_filters_v1;
   assert.equal(filtersAfterBack.kind, undefined, 'Back should clear the selected anime type for the next visit');
   assert.equal(filtersAfterBack.search, undefined, 'Back should clear the title query for the next visit');
-  assert.equal(filtersAfterBack.sort, 'popularity', 'Back should restore popularity sorting');
+  assert.equal(filtersAfterBack.sort, 'aired_on', 'Back should preserve the standalone sort preference');
   assert.equal(filtersAfterBack.seasons, api.getSeason(new Date()), 'Back should restore the current season');
   component.destroy();
+  assert.equal(storage.lme_shikimori_filters_v1.sort, 'aired_on', 'destroy should not overwrite the standalone sort preference');
   storage.lme_shikimori_filters_v1 = {};
 }
 
@@ -807,4 +814,4 @@ testLegacyCardFallbackSafety();
 testTmdbAdultSearchFlagRemainsEnabled();
 testNoAccountAuthorizationRemains();
 
-process.stdout.write('Shikimori smoke tests: PASS (16 groups)\n');
+process.stdout.write('Shikimori smoke tests: PASS (17 groups)\n');
