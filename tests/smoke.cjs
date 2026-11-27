@@ -335,7 +335,7 @@ function testRestoredFiltersAreStableAcrossPages() {
   component.destroy();
   const seasonNames = ['winter', 'spring', 'summer', 'fall'];
   const currentSeason = seasonNames[Math.floor(new Date().getMonth() / 3)] + '_' + new Date().getFullYear();
-  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'popularity' }), 'leaving the catalogue should reset filters and title search to current-season/popularity defaults');
+  assert.equal(JSON.stringify(storage.lme_shikimori_filters_v1), JSON.stringify({ seasons: currentSeason, sort: 'ranked' }), 'leaving the catalogue should reset filter/search state but preserve standalone sorting');
   storage.lme_shikimori_filters_v1 = {};
 }
 
