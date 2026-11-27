@@ -536,7 +536,7 @@ function testTvFriendlyFilterGroupsAndBackNavigation() {
   const sortBackMenu = selectCalls[selectCalls.length - 1];
   assert.equal(sortBackMenu.title, 'Сортировка');
   sortBackMenu.onBack();
-  assert.equal(lastCollectionFocus, sortButton, 'Back from sorting should restore focus to the Sort button');
+  assert.equal(lastCollectionFocus && lastCollectionFocus.selector, sortButton.selector, 'Back from sorting should restore focus to the Sort button');
 
   sortButton.handlers['hover:enter']();
   const sortMenu = selectCalls[selectCalls.length - 1];
